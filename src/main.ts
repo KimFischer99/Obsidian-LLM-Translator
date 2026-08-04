@@ -19,9 +19,9 @@ const DEFAULT_SETTINGS: PdfOllamaTranslatorSettings = {
 	translationScope: "global",
 	translationProvider: "local-llm",
 	ollamaBaseUrl: "http://localhost:11434",
-	model: "hy-mt2-1.8b-q4:latest",
+	model: "RogerBen/HY-MT2-1.8B:latest",
 	cloudApiBaseUrl: "",
-	cloudApiKey: "",
+	cloudApiKeySecretId: "",
 	cloudApiModel: "",
 	autoTranslateSelection: true,
 	enablePopup: true,
@@ -49,6 +49,8 @@ const DEFAULT_SETTINGS: PdfOllamaTranslatorSettings = {
 	debugLogging: false,
 };
 
+const LEGACY_CLOUD_API_SECRET_ID = "llm-translator-cloud-api-key";
+
 interface AppWithSetting {
 	setting?: {
 		open: () => void;
@@ -65,6 +67,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	private selectionTimer: number | undefined;
 	private activeRequest: AbortController | undefined;
 	private lastSelection: PdfTextSelection | undefined;
+	private lastDocumentSelection: PdfTextSelection | undefined;
 	private lastSelectionKey = "";
 	private isPointerSelecting = false;
 	private sidebarState: SidebarTranslationState = {
@@ -77,9 +80,16 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
-		this.translator = new TranslatorService(() => this.settings);
+		this.translator = new TranslatorService(
+			() => this.settings,
+			(secretId) => this.app.secretStorage.getSecret(secretId),
+		);
 		this.selectionReader = new PdfSelectionReader(this.app, () => this.settings, this.debug);
-		this.highlightService = new PdfHighlightService(this.app, this.debug);
+		this.highlightService = new PdfHighlightService(
+			this.app,
+			this.debug,
+			() => this.beginHighlightNoteEditing(),
+		);
 		this.popup = new TranslationPopup({
 			showCopyButton: this.settings.showCopyButton,
 			showRetryButton: this.settings.showRetryButton,
@@ -188,6 +198,16 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 		this.refreshSidebarViews();
 	}
 
+	setSidebarSourceText(sourceText: string): void {
+		this.cancelActiveRequest();
+		this.sidebarState = {
+			sourceText,
+			translatedText: "",
+			status: "idle",
+			message: "",
+		};
+	}
+
 	async copySidebarText(mode: "raw" | "result" | "both"): Promise<void> {
 		const { sourceText, translatedText } = this.sidebarState;
 		const value =
@@ -207,12 +227,22 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	}
 
 	async translateActiveSelectionFromSidebar(): Promise<void> {
-		const selection = this.selectionReader.readSelection();
+		const selection = this.selectionReader.readSelection() ?? this.lastDocumentSelection;
 		if (!selection) {
 			new Notice(t("notice.selectTextFirst"));
 			return;
 		}
 		await this.translateSelection(selection, true);
+	}
+
+	async translateSidebarText(text: string, rect: DOMRect): Promise<void> {
+		const sourceText = text.trim();
+		if (!sourceText) {
+			new Notice(t("notice.enterTextFirst"));
+			return;
+		}
+
+		await this.translateSelection({ text: sourceText, rect }, true);
 	}
 
 	async highlightActiveSelection(): Promise<void> {
@@ -226,6 +256,25 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			await this.highlightService.toggleSelectionHighlight(selection, this.settings.defaultHighlightColor);
 		} catch (error) {
 			this.debug("PDF highlight failed.", error);
+			new Notice(`${t("notice.highlightFailed")} ${toReadableMessage(error)}`.trim());
+		}
+	}
+
+	async clearActivePdfHighlights(): Promise<void> {
+		if (!this.highlightService.hasPdfForClear()) {
+			new Notice(t("notice.openPdfFirst"));
+			return;
+		}
+		if (!window.confirm(t("sidebar.clearAllHighlightsConfirm"))) {
+			return;
+		}
+		try {
+			const removed = await this.highlightService.clearAllHighlightsForActivePdf();
+			if (removed === null) {
+				new Notice(t("notice.openPdfFirst"));
+			}
+		} catch (error) {
+			this.debug("Could not clear PDF highlights.", error);
 			new Notice(`${t("notice.highlightFailed")} ${toReadableMessage(error)}`.trim());
 		}
 	}
@@ -250,8 +299,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	private async activateSidebarView(): Promise<void> {
 		this.popup.hide();
 
-		// Detach any existing leaves first to force right-side creation
-		// Detach any existing leaves
+		// Detach existing leaves to force right-side creation.
 		const existingLeaves = this.app.workspace.getLeavesOfType(PDF_OLLAMA_TRANSLATOR_VIEW_TYPE);
 		for (const leaf of existingLeaves) {
 			leaf.detach();
@@ -274,7 +322,13 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 		this.registerDomEvent(activeDocument, "selectionchange", () => this.handleSelectionChange());
 		this.registerDomEvent(activeDocument, "mouseup", () => this.finishPointerSelection());
 		this.registerDomEvent(activeDocument, "keydown", (event) => this.handleDocumentKeyDown(event));
-		this.registerDomEvent(activeDocument, "keyup", () => this.scheduleSelectionTranslation());
+		this.registerDomEvent(activeDocument, "keyup", (event) => {
+			if (isHighlightNoteTarget(event.target)) {
+				window.clearTimeout(this.selectionTimer);
+				return;
+			}
+			this.scheduleSelectionTranslation();
+		});
 		this.registerDomEvent(window, "resize", () => this.popup.reposition());
 		this.registerDomEvent(activeDocument, "scroll", () => this.popup.reposition(), true);
 	}
@@ -308,7 +362,8 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	}
 
 	private handleSelectionChange(): void {
-		if (this.isPointerSelecting) {
+		if (this.isPointerSelecting || isHighlightNoteTarget(activeDocument.activeElement)) {
+			window.clearTimeout(this.selectionTimer);
 			return;
 		}
 		this.scheduleSelectionTranslation();
@@ -323,6 +378,9 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	}
 
 	private handleDocumentKeyDown(event: KeyboardEvent): void {
+		if (isHighlightNoteTarget(event.target)) {
+			return;
+		}
 		if (event.key.toLowerCase() !== "z" || event.shiftKey || (!event.metaKey && !event.ctrlKey)) {
 			return;
 		}
@@ -339,6 +397,13 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 
 	private scheduleSelectionTranslation(): void {
 		window.clearTimeout(this.selectionTimer);
+		if (isHighlightNoteTarget(activeDocument.activeElement)) {
+			return;
+		}
+		const selection = this.selectionReader.readSelection();
+		if (selection) {
+			this.lastDocumentSelection = selection;
+		}
 		if (!this.settings.autoTranslateSelection) {
 			return;
 		}
@@ -355,15 +420,6 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			return;
 		}
 
-		if (this.selectionReader.isSelectionTooLong(selection)) {
-			this.popup.showInfo(
-				selection.text,
-				t("notice.selectionExceedsLimit", { count: this.settings.maxSelectionChars }),
-				selection.rect,
-			);
-			return;
-		}
-
 		await this.translateSelection(selection, false);
 	}
 
@@ -376,6 +432,21 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	}
 
 	private async translateSelection(selection: PdfTextSelection, force: boolean): Promise<void> {
+		if (selection.text.length > this.settings.maxSelectionChars) {
+			const message = t("notice.selectionExceedsLimit", { count: this.settings.maxSelectionChars });
+			if (this.isSidebarVisible()) {
+				this.updateSidebarState({
+					sourceText: selection.text,
+					translatedText: "",
+					status: "error",
+					message,
+				});
+			} else {
+				this.popup.showInfo(message, selection.rect);
+			}
+			return;
+		}
+
 		const missingConfigMessage = this.getMissingProviderConfigMessage();
 		if (missingConfigMessage) {
 			if (this.isSidebarVisible()) {
@@ -386,7 +457,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 					message: missingConfigMessage,
 				});
 			} else {
-				this.popup.showError(selection.text, missingConfigMessage, selection.rect);
+				this.popup.showError(missingConfigMessage, selection.rect);
 			}
 			return;
 		}
@@ -405,7 +476,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 		const showPopup = !this.isSidebarVisible();
 		const shouldShowPopup = showPopup && this.settings.enablePopup;
 		if (shouldShowPopup) {
-			this.popup.showLoading(selection.text, selection.rect);
+			this.popup.showLoading(selection.rect);
 		} else {
 			this.popup.hide();
 		}
@@ -448,7 +519,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			const message = this.translator.toReadableError(error);
 			this.debug("Translation failed.", error);
 			if (shouldShowPopup) {
-				this.popup.showError(selection.text, message, selection.rect);
+				this.popup.showError(message, selection.rect);
 			}
 			this.updateSidebarState({
 				sourceText: selection.text,
@@ -472,7 +543,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			return t("error.selectLocalModel");
 		}
 		if (this.settings.translationProvider === "cloud-api") {
-			if (!this.settings.cloudApiKey.trim()) {
+			if (!this.getCloudApiKey()) {
 				return t("error.fillApiKey");
 			}
 			if (!this.settings.cloudApiModel.trim()) {
@@ -496,6 +567,12 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 		this.cancelActiveRequest();
 		this.popup.hide();
 		this.lastSelectionKey = "";
+	}
+
+	private beginHighlightNoteEditing(): void {
+		window.clearTimeout(this.selectionTimer);
+		this.isPointerSelecting = false;
+		this.hidePopup();
 	}
 
 	private cancelActiveRequest(): void {
@@ -562,16 +639,38 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	private async loadSettings(): Promise<void> {
 		const loaded = (await this.loadData()) as Record<string, unknown> | undefined ?? {};
 		const safe = loaded as unknown as Partial<PdfOllamaTranslatorSettings> & { translationProvider?: string };
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, safe, {
+		const legacyApiKey = typeof loaded.cloudApiKey === "string" ? loaded.cloudApiKey.trim() : "";
+		let cloudApiKeySecretId = typeof safe.cloudApiKeySecretId === "string"
+			? safe.cloudApiKeySecretId
+			: "";
+		if (legacyApiKey && !cloudApiKeySecretId) {
+			cloudApiKeySecretId = LEGACY_CLOUD_API_SECRET_ID;
+			if (!this.app.secretStorage.getSecret(cloudApiKeySecretId)) {
+				this.app.secretStorage.setSecret(cloudApiKeySecretId, legacyApiKey);
+			}
+		}
+		this.settings = {
+			...DEFAULT_SETTINGS,
+			...safe,
 			cloudApiBaseUrl: safe.cloudApiBaseUrl ?? DEFAULT_SETTINGS.cloudApiBaseUrl,
-			cloudApiKey: safe.cloudApiKey ?? DEFAULT_SETTINGS.cloudApiKey,
+			cloudApiKeySecretId,
 			cloudApiModel: safe.cloudApiModel ?? DEFAULT_SETTINGS.cloudApiModel,
 			translationProvider: safe.translationProvider ?? DEFAULT_SETTINGS.translationProvider,
-		});
+		};
+		if (Object.prototype.hasOwnProperty.call(loaded, "cloudApiKey")) {
+			await this.saveSettings();
+		}
 	}
 
 	private async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
+		const persisted = { ...this.settings } as Record<string, unknown>;
+		delete persisted.cloudApiKey;
+		await this.saveData(persisted);
+	}
+
+	private getCloudApiKey(): string {
+		const secretId = this.settings.cloudApiKeySecretId.trim();
+		return secretId ? this.app.secretStorage.getSecret(secretId)?.trim() ?? "" : "";
 	}
 
 	private debug = (message: string, detail?: unknown): void => {
@@ -593,10 +692,13 @@ function toReadableMessage(error: unknown): string {
 }
 
 function isHighlightNoteTarget(target: EventTarget | null): boolean {
-	return (
-		target instanceof Element &&
-		Boolean(target.closest(
+	const node = target && typeof target === "object" && "nodeType" in target
+		? target as Node
+		: null;
+	const element = node?.nodeType === 1 ? node as Element : node?.parentElement;
+	return Boolean(
+		element?.closest(
 			".pdf-ollama-translator-highlight-overlay, .pdf-ollama-translator-highlight-note-icon, .pdf-ollama-translator-highlight-note-editor",
-		))
+		)
 	);
 }

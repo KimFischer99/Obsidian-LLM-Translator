@@ -34,7 +34,8 @@ export function toRawPdfChars(text: string, boxes: PdfCharBox[]): RawChar[] {
 function normalizeRawChars(rawChars: RawChar[]): NormalizedText {
 	const text: string[] = [];
 	const map: Array<PdfCharBox | undefined> = [];
-	let pendingSpace: PdfCharBox | undefined;
+	let hasPendingSpace = false;
+	let pendingSpaceBox: PdfCharBox | undefined;
 
 	for (let index = 0; index < rawChars.length; index++) {
 		const raw = rawChars[index];
@@ -49,15 +50,17 @@ function normalizeRawChars(rawChars: RawChar[]): NormalizedText {
 		for (const char of Array.from(replacement)) {
 			if (/\s/.test(char)) {
 				if (text.length > 0) {
-					pendingSpace = pendingSpace ?? raw.box;
+					hasPendingSpace = true;
+					pendingSpaceBox = pendingSpaceBox ?? raw.box;
 				}
 				continue;
 			}
 
-			if (pendingSpace && text.length > 0) {
+			if (hasPendingSpace && text.length > 0) {
 				text.push(" ");
-				map.push(pendingSpace);
-				pendingSpace = undefined;
+				map.push(pendingSpaceBox);
+				hasPendingSpace = false;
+				pendingSpaceBox = undefined;
 			}
 			text.push(char);
 			map.push(raw.box);

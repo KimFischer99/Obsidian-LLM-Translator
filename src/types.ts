@@ -6,7 +6,7 @@ export interface PdfOllamaTranslatorSettings {
 	ollamaBaseUrl: string;
 	model: string;
 	cloudApiBaseUrl: string;
-	cloudApiKey: string;
+	cloudApiKeySecretId: string;
 	cloudApiModel: string;
 	autoTranslateSelection: boolean;
 	enablePopup: boolean;

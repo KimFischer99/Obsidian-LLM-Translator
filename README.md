@@ -47,7 +47,7 @@
 ### 🎯 Smart Interaction
 
 - Auto-popup translation window on text selection
-- Sidebar translation panel for manual input
+- Sidebar translation panel for manual input or the current selection
 - Copy / Retry / One-click language switch
 - Custom translation prompt for professional needs
 
@@ -90,11 +90,11 @@ Download and install via Terminal:
 mkdir -p YourVault/.obsidian/plugins/llm-translator
 
 # Download Release files
-curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/download/0.3.0/main.js \
+curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/latest/download/main.js \
   -o YourVault/.obsidian/plugins/llm-translator/main.js
-curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/download/0.3.0/manifest.json \
+curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/latest/download/manifest.json \
   -o YourVault/.obsidian/plugins/llm-translator/manifest.json
-curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/download/0.3.0/styles.css \
+curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/latest/download/styles.css \
   -o YourVault/.obsidian/plugins/llm-translator/styles.css
 ```
 
@@ -120,7 +120,7 @@ After installing the plugin, configure as follows:
 |---------|-------------------|
 | Translation service | Local LLM |
 | Local model endpoint | `http://localhost:11434` |
-| Model name | `hy-mt2-1.8b-q4:latest` |
+| Model name | `RogerBen/HY-MT2-1.8B:latest` |
 | Source language | Auto |
 | Target language | 简体中文 |
 
@@ -144,17 +144,20 @@ After installing the plugin, configure as follows:
 
 1. **Auto-translate** — Select text in PDF or Markdown, translation popup appears automatically
 2. **Sidebar** — Click the language icon on the left toolbar to open the right-side translation panel
-3. **Manual translate** — Enter text in the sidebar and click Translate
+3. **Translate from sidebar** — Enter text directly, or reuse the current PDF/Markdown selection, then click Translate
 
 ### Translation Scope
 
 - **Global** — Both PDF and Markdown support selection translation
-- **PDF only** — Only enable in PDF files (default)
+- **PDF only** — Only enable in PDF files
+
+The default scope is **Global**.
 
 ### Sidebar Features
 
 - **Translation service switch** — Quickly switch Local LLM / Cloud API / Google / Bing
 - **Language selection** — Set source and target languages
+- **Manual input / current selection** — Type text directly or reuse the latest document selection
 - **Auto-Trans** — Toggle auto-translation
 - **Copy** — Copy source (Raw), translation (Result), or Both
 - **Clear** — Clear current translation history
@@ -187,6 +190,15 @@ Supports any OpenAI-compatible API provider:
 No configuration required. Select directly from the translation service dropdown.
 
 > ⚠️ Free translation services have rate limits. For heavy usage, switch to local models or cloud APIs.
+
+### Privacy and network access
+
+- **Local LLM** sends selected text and the translation prompt to the configured Ollama endpoint. With the default `http://localhost:11434` endpoint, the request stays on this computer; a custom remote endpoint sends it over the network.
+- **Cloud API** sends selected text, the translation prompt, language settings, and model identifier to the API URL you configure. The provider may retain or process this data under its own policy.
+- **Google Translate / Bing Translate** send selected text and language settings to Google or Microsoft translation services.
+- **Cloud API keys** are selected or created through Obsidian `SecretStorage`; `data.json` stores only the selected secret ID, not the key value.
+
+LLM Translator 0.4.0 requires Obsidian 1.11.4 or later. Obsidian's version resolver can keep older installations on plugin 0.3.5.
 
 ---
 
@@ -236,6 +248,9 @@ npm run dev
 
 # Production build
 npm run build
+
+# Automated behavior tests
+npm test
 ```
 
 After building, copy `main.js`, `manifest.json`, and `styles.css` to:

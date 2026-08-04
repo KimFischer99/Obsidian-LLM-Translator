@@ -23,6 +23,8 @@ jobs:
 
       - run: npm ci
 
+      - run: npm test
+
       - run: npm run build
 
       - uses: actions/attest-build-provenance@v2
@@ -33,6 +35,6 @@ jobs:
             styles.css
 
       - run: |
-          gh release upload "${{ github.ref_name }}" main.js manifest.json styles.css --clobber
+          gh release upload "${{ github.ref_name }}" main.js manifest.json styles.css
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

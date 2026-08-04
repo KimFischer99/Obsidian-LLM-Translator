@@ -14,6 +14,8 @@ if you want to view the source, please visit the github repository of this plugi
 
 const prod = process.argv[2] === "production";
 
+await verifyVersionMetadata();
+
 const pdfWorkerSourcePlugin = {
 	name: "pdf-worker-source",
 	setup(build) {
@@ -71,4 +73,33 @@ if (prod) {
 	process.exit(0);
 } else {
 	await context.watch();
+}
+
+async function verifyVersionMetadata() {
+	const [packageJson, manifest, packageLock, versions] = await Promise.all([
+		readJson("package.json"),
+		readJson("manifest.json"),
+		readJson("package-lock.json"),
+		readJson("versions.json"),
+	]);
+	const version = packageJson.version;
+	const observed = {
+		"manifest.json": manifest.version,
+		"package-lock.json": packageLock.version,
+		"package-lock.json packages root": packageLock.packages?.[""]?.version,
+	};
+	for (const [source, candidate] of Object.entries(observed)) {
+		if (candidate !== version) {
+			throw new Error(`Version mismatch: package.json=${version}, ${source}=${candidate ?? "missing"}`);
+		}
+	}
+	if (versions[version] !== manifest.minAppVersion) {
+		throw new Error(
+			`Version mismatch: versions.json[${version}]=${versions[version] ?? "missing"}, manifest.minAppVersion=${manifest.minAppVersion}`,
+		);
+	}
+}
+
+async function readJson(filePath) {
+	return JSON.parse(await fs.readFile(filePath, "utf8"));
 }

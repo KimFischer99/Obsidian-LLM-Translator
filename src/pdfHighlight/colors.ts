@@ -39,3 +39,13 @@ export const HIGHLIGHT_COLOR_ORDER: HighlightColorId[] = ["yellow", "red", "blue
 export function getHighlightColor(id: HighlightColorId): HighlightColorConfig {
 	return HIGHLIGHT_COLORS[id] ?? HIGHLIGHT_COLORS.yellow;
 }
+
+export function getHighlightColorFromPdfRgb(rgb: readonly number[]): HighlightColorConfig {
+	return HIGHLIGHT_COLOR_ORDER
+		.map(getHighlightColor)
+		.reduce((closest, color) => colorDistance(color.pdfRgb, rgb) < colorDistance(closest.pdfRgb, rgb) ? color : closest);
+}
+
+function colorDistance(left: readonly number[], right: readonly number[]): number {
+	return left.reduce((distance, value, index) => distance + (value - (right[index] ?? 0)) ** 2, 0);
+}

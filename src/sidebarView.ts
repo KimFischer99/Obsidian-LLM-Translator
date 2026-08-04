@@ -5,8 +5,14 @@ import { t } from "./i18n";
 import { HIGHLIGHT_COLOR_ORDER, getHighlightColor } from "./pdfHighlight/colors";
 
 export const PDF_OLLAMA_TRANSLATOR_VIEW_TYPE = "llm-translator-sidebar";
+const SIDEBAR_LEAF_CLASS = "pdf-ollama-translator-sidebar-leaf";
+const SIDEBAR_SPLIT_CLASS = "pdf-ollama-translator-sidebar-split";
 
 export class PdfOllamaTranslatorSidebarView extends ItemView {
+	private sourceInputEl: HTMLTextAreaElement | null = null;
+	private sidebarLeafEl: HTMLElement | null = null;
+	private sidebarSplitEl: HTMLElement | null = null;
+
 	constructor(leaf: WorkspaceLeaf, private plugin: PdfOllamaTranslatorPlugin) {
 		super(leaf);
 	}
@@ -24,7 +30,19 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
+		this.sidebarLeafEl = this.containerEl.closest<HTMLElement>(".workspace-leaf");
+		this.sidebarSplitEl = this.sidebarLeafEl?.closest<HTMLElement>(".workspace-split.mod-right-split") ?? null;
+		this.sidebarLeafEl?.addClass(SIDEBAR_LEAF_CLASS);
+		this.sidebarSplitEl?.addClass(SIDEBAR_SPLIT_CLASS);
 		this.render();
+	}
+
+	async onClose(): Promise<void> {
+		this.sidebarLeafEl?.removeClass(SIDEBAR_LEAF_CLASS);
+		this.sidebarSplitEl?.removeClass(SIDEBAR_SPLIT_CLASS);
+		this.sidebarLeafEl = null;
+		this.sidebarSplitEl = null;
+		this.sourceInputEl = null;
 	}
 
 	refresh(): void {
@@ -87,10 +105,15 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 		});
 
 		const translateButton = rowEl.createEl("button", {
-			text: t("sidebar.translate"),
+			text: t("sidebar.translateInput"),
 			cls: "pdf-ollama-translator-sidebar__primary-button",
 		});
-		translateButton.onClickEvent(() => void this.plugin.translateActiveSelectionFromSidebar());
+		translateButton.onClickEvent(() => {
+			if (!this.sourceInputEl) {
+				return;
+			}
+			void this.plugin.translateSidebarText(this.sourceInputEl.value, this.sourceInputEl.getBoundingClientRect());
+		});
 	}
 
 	private renderLanguageControls(container: HTMLElement): void {
@@ -154,9 +177,15 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 	private renderTextPanels(container: HTMLElement): void {
 		const state = this.plugin.getSidebarState();
 
-		const sourceEl = container.createDiv({ cls: "pdf-ollama-translator-sidebar__panel" });
-		sourceEl.setText(state.sourceText || t("sidebar.rawText"));
-		sourceEl.toggleClass("is-placeholder", !state.sourceText);
+		const sourceEl = container.createEl("textarea", {
+			cls: "pdf-ollama-translator-sidebar__panel pdf-ollama-translator-sidebar__source",
+			attr: {
+				"aria-label": t("sidebar.sourceText"),
+				placeholder: t("sidebar.sourceTextPlaceholder"),
+			},
+		});
+		this.sourceInputEl = sourceEl;
+		sourceEl.value = state.sourceText;
 
 		const resultEl = container.createDiv({ cls: "pdf-ollama-translator-sidebar__panel pdf-ollama-translator-sidebar__panel--result" });
 		if (state.status === "loading") {
@@ -168,6 +197,13 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 			resultEl.setText(state.translatedText || t("sidebar.translation"));
 			resultEl.toggleClass("is-placeholder", !state.translatedText);
 		}
+
+		sourceEl.oninput = () => {
+			this.plugin.setSidebarSourceText(sourceEl.value);
+			resultEl.setText(t("sidebar.translation"));
+			resultEl.removeClass("is-error");
+			resultEl.addClass("is-placeholder");
+		};
 	}
 
 	private renderBottomControls(container: HTMLElement): void {
@@ -175,10 +211,14 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 
 		this.renderHighlightControls(controlsEl);
 
-		const quickRowEl = controlsEl.createDiv({ cls: "pdf-ollama-translator-sidebar__quick-row" });
-		const autoGroupEl = quickRowEl.createDiv({ cls: "pdf-ollama-translator-sidebar__quick-group" });
-		autoGroupEl.createSpan({ text: t("sidebar.autoTrans"), cls: "pdf-ollama-translator-sidebar__control-label" });
-		const autoToggle = autoGroupEl.createEl("input", {
+		const quickRowEl = controlsEl.createDiv({
+			cls: "pdf-ollama-translator-sidebar__control-row pdf-ollama-translator-sidebar__quick-row",
+		});
+		quickRowEl.createSpan({ text: t("sidebar.autoTrans"), cls: "pdf-ollama-translator-sidebar__control-label" });
+		const quickActionsEl = quickRowEl.createDiv({
+			cls: "pdf-ollama-translator-sidebar__control-actions pdf-ollama-translator-sidebar__quick-actions",
+		});
+		const autoToggle = quickActionsEl.createEl("input", {
 			cls: "pdf-ollama-translator-sidebar__toggle",
 			attr: { type: "checkbox", "aria-label": t("sidebar.autoTransLabel") },
 		});
@@ -188,23 +228,33 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 			this.render();
 		};
 
-		const selectionGroupEl = quickRowEl.createDiv({ cls: "pdf-ollama-translator-sidebar__quick-group" });
-		selectionGroupEl.createSpan({ text: t("sidebar.selection"), cls: "pdf-ollama-translator-sidebar__control-label" });
-		selectionGroupEl.createEl("button", {
+		quickActionsEl.createEl("button", {
+			text: t("sidebar.useCurrentSelection"),
+			cls: "pdf-ollama-translator-sidebar__clear-button",
+		}).onClickEvent(() => void this.plugin.translateActiveSelectionFromSidebar());
+		quickActionsEl.createEl("button", {
 			text: t("sidebar.clear"),
 			cls: "pdf-ollama-translator-sidebar__clear-button",
 		}).onClickEvent(() => {
 			this.plugin.clearSidebarState();
 		});
 
-		const copyRowEl = controlsEl.createDiv({ cls: "pdf-ollama-translator-sidebar__copy-row" });
-		copyRowEl.createSpan({ text: t("sidebar.copy"), cls: "pdf-ollama-translator-sidebar__copy-label" });
+		const copyRowEl = controlsEl.createDiv({
+			cls: "pdf-ollama-translator-sidebar__control-row pdf-ollama-translator-sidebar__copy-row",
+		});
+		copyRowEl.createSpan({
+			text: t("sidebar.copy"),
+			cls: "pdf-ollama-translator-sidebar__control-label pdf-ollama-translator-sidebar__copy-label",
+		});
+		const copyActionsEl = copyRowEl.createDiv({
+			cls: "pdf-ollama-translator-sidebar__control-actions pdf-ollama-translator-sidebar__copy-actions",
+		});
 		for (const item of [
 			{ label: t("sidebar.raw"), action: () => this.plugin.copySidebarText("raw") },
 			{ label: t("sidebar.result"), action: () => this.plugin.copySidebarText("result") },
 			{ label: t("sidebar.both"), action: () => this.plugin.copySidebarText("both") },
 		]) {
-			copyRowEl.createEl("button", {
+			copyActionsEl.createEl("button", {
 				text: item.label,
 				cls: "pdf-ollama-translator-sidebar__copy-button",
 			}).onClickEvent(() => void item.action());
@@ -212,9 +262,13 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 	}
 
 	private renderHighlightControls(container: HTMLElement): void {
-		const rowEl = container.createDiv({ cls: "pdf-ollama-translator-sidebar__highlight-row" });
+		const rowEl = container.createDiv({
+			cls: "pdf-ollama-translator-sidebar__control-row pdf-ollama-translator-sidebar__highlight-row",
+		});
 		rowEl.createSpan({ text: t("sidebar.highlightColor"), cls: "pdf-ollama-translator-sidebar__control-label" });
-		const paletteEl = rowEl.createDiv({ cls: "pdf-ollama-translator-sidebar__highlight-palette" });
+		const paletteEl = rowEl.createDiv({
+			cls: "pdf-ollama-translator-sidebar__control-actions pdf-ollama-translator-sidebar__highlight-palette",
+		});
 
 		for (const colorId of HIGHLIGHT_COLOR_ORDER) {
 			const color = getHighlightColor(colorId);
@@ -234,5 +288,11 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 				this.render();
 			});
 		}
+
+		const clearButton = paletteEl.createEl("button", {
+			text: t("sidebar.clearAllHighlights"),
+			cls: "pdf-ollama-translator-sidebar__clear-button pdf-ollama-translator-sidebar__clear-highlights-button",
+		});
+		clearButton.onClickEvent(() => void this.plugin.clearActivePdfHighlights());
 	}
 }

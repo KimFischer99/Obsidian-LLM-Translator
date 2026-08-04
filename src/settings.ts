@@ -1,4 +1,4 @@
-import { App, DropdownComponent, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, DropdownComponent, Notice, PluginSettingTab, SecretComponent, Setting } from "obsidian";
 import type PdfOllamaTranslatorPlugin from "./main";
 import { DEFAULT_TRANSLATION_PROMPT } from "./translatorService";
 import type { HighlightColorId, TranslationLanguage, TranslationProviderId } from "./types";
@@ -322,15 +322,12 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName(t("settings.apiKey"))
-			.addText((text) => {
-				text.inputEl.type = "password";
-				text
-					.setPlaceholder("sk-...")
-					.setValue(this.plugin.settings.cloudApiKey)
-					.onChange(async (value) => {
-						await this.plugin.updateSettings({ cloudApiKey: value.trim() });
-					});
-			});
+			.setDesc(t("settings.apiKeyDesc"))
+			.addComponent((el) => new SecretComponent(this.app, el)
+				.setValue(this.plugin.settings.cloudApiKeySecretId)
+				.onChange(async (value) => {
+					await this.plugin.updateSettings({ cloudApiKeySecretId: value });
+				}));
 
 		new Setting(containerEl)
 			.setName(t("settings.modelName"))

@@ -1,11 +1,15 @@
 import { setIcon, type App } from "obsidian";
 import type { PdfSelectionOverlayRect, PdfTextSelection } from "../types";
+import { t } from "../i18n";
 import type { HighlightColorConfig } from "./types";
 
 const HOST_CLASS = "pdf-ollama-translator-highlight-host";
 const LAYER_CLASS = "pdf-ollama-translator-highlight-layer";
 const OVERLAY_CLASS = "pdf-ollama-translator-highlight-overlay";
 const NOTE_ICON_CLASS = "pdf-ollama-translator-highlight-note-icon";
+const EDITOR_CLASS = "pdf-ollama-translator-highlight-note-editor";
+const NATIVE_POPUP_WRAPPER_SELECTOR = ".popupWrapper";
+const NATIVE_POPUP_CONTENT_SELECTOR = ".popupContent";
 const PAGE_SELECTOR = "[data-page-number], .page, .pdf-page";
 const PDF_VIEWER_SELECTOR = [
 	".pdf-container",
@@ -29,34 +33,49 @@ interface LeafLike {
 
 interface OverlayGroup {
 	filePath?: string;
-	rects: PdfSelectionOverlayRect[];
+	rects: OverlayRect[];
 	elements: HTMLElement[];
 	icon?: HTMLElement;
 	note: string;
 	color: HighlightColorConfig;
-	onNoteChange: (note: string) => void;
+	onNoteChange: (note: string, flush?: boolean) => void;
 }
+
+type OverlayRect = Pick<
+	PdfSelectionOverlayRect,
+	"pageNumber" | "leftRatio" | "topRatio" | "widthRatio" | "heightRatio"
+> & { pageEl?: HTMLElement };
 
 export class HighlightOverlay {
 	private groups = new Map<string, OverlayGroup>();
 	private layers = new Map<HTMLElement, HTMLElement>();
-	private observedDocuments = new WeakSet<Document>();
-	private observers: MutationObserver[] = [];
+	private hostObservers = new Map<HTMLElement, MutationObserver>();
+	private popupObservers = new Map<Document, MutationObserver>();
+	private nativePopupSuppressionUntil = new WeakMap<Document, number>();
 	private renderFrame: number | undefined;
 	private editorEl: HTMLElement | undefined;
 	private textareaEl: HTMLTextAreaElement | undefined;
 	private activeId = "";
 	private activeAnchor: HTMLElement | undefined;
 	private listenersRegistered = false;
+	private interactionDocuments = new Set<Document>();
+	private lastBlankHighlightClick: { id: string; at: number } | undefined;
 
-	constructor(private app: App) {}
+	constructor(
+		private app: App,
+		private onEditorOpen: () => void = () => undefined,
+	) {}
+
+	activate(): void {
+		this.registerGlobalListeners();
+	}
 
 	render(
 		id: string,
 		selection: PdfTextSelection,
 		color: HighlightColorConfig,
 		note: string,
-		onNoteChange: (note: string) => void,
+		onNoteChange: (note: string, flush?: boolean) => void,
 	): void {
 		this.remove(id);
 		if (!selection.overlayRects?.length) {
@@ -77,6 +96,32 @@ export class HighlightOverlay {
 		this.updateNote(id, note);
 	}
 
+	renderPersisted(
+		id: string,
+		filePath: string,
+		rects: OverlayRect[],
+		color: HighlightColorConfig,
+		note: string,
+		onNoteChange: (note: string, flush?: boolean) => void,
+	): void {
+		this.remove(id);
+		if (!rects.length) {
+			return;
+		}
+
+		this.registerGlobalListeners();
+		const group: OverlayGroup = {
+			filePath,
+			rects,
+			elements: [],
+			note,
+			color,
+			onNoteChange,
+		};
+		this.groups.set(id, group);
+		this.renderGroup(id, group);
+	}
+
 	updateNote(id: string, note: string): void {
 		const group = this.groups.get(id);
 		if (!group) {
@@ -84,6 +129,9 @@ export class HighlightOverlay {
 		}
 
 		group.note = note;
+		for (const overlay of group.elements) {
+			this.setOverlayInteractivity(overlay, note);
+		}
 		if (this.activeId === id && this.textareaEl && this.textareaEl.value !== note) {
 			this.textareaEl.value = note;
 		}
@@ -118,10 +166,14 @@ export class HighlightOverlay {
 			cancelAnimationFrame(this.renderFrame);
 			this.renderFrame = undefined;
 		}
-		for (const observer of this.observers) {
+		for (const observer of this.hostObservers.values()) {
 			observer.disconnect();
 		}
-		this.observers = [];
+		this.hostObservers.clear();
+		for (const observer of this.popupObservers.values()) {
+			observer.disconnect();
+		}
+		this.popupObservers.clear();
 		for (const group of this.groups.values()) {
 			this.clearRenderedElements(group);
 		}
@@ -133,11 +185,13 @@ export class HighlightOverlay {
 		this.editorEl?.remove();
 		this.editorEl = undefined;
 		this.textareaEl = undefined;
-		if (this.listenersRegistered) {
-			activeDocument.removeEventListener("pointerdown", this.handleDocumentPointerDown, true);
-			activeDocument.removeEventListener("scroll", this.handleViewportChange, true);
-			window.removeEventListener("resize", this.handleViewportChange);
+		for (const doc of this.interactionDocuments) {
+			doc.removeEventListener("pointerdown", this.handleDocumentPointerDown, true);
+			doc.removeEventListener("pointerup", this.handleDocumentPointerUp, true);
+			doc.removeEventListener("scroll", this.handleViewportChange, true);
 		}
+		window.removeEventListener("resize", this.handleViewportChange);
+		this.interactionDocuments.clear();
 		this.listenersRegistered = false;
 	}
 
@@ -145,13 +199,10 @@ export class HighlightOverlay {
 		this.clearRenderedElements(group);
 		const host = this.resolveHost(group);
 		if (!host) {
-			if (this.activeId === id) {
-				this.closeEditor();
-			}
 			return;
 		}
 
-		this.observeDocument(host.ownerDocument);
+		this.observeHost(host);
 		const layer = this.ensureLayer(host);
 		const hostRect = host.getBoundingClientRect();
 		const elements: HTMLElement[] = [];
@@ -178,18 +229,8 @@ export class HighlightOverlay {
 			overlay.style.top = `${top}px`;
 			overlay.style.width = `${width}px`;
 			overlay.style.height = `${height}px`;
-			overlay.style.background = group.color.css;
 			overlay.dataset.highlightId = id;
-			overlay.onpointerdown = (event) => {
-				event.preventDefault();
-				event.stopPropagation();
-				this.openEditor(id, overlay);
-			};
-			overlay.onclick = (event) => {
-				event.preventDefault();
-				event.stopPropagation();
-				this.openEditor(id, overlay);
-			};
+			this.setOverlayInteractivity(overlay, group.note);
 			layer.appendChild(overlay);
 			elements.push(overlay);
 		}
@@ -202,7 +243,6 @@ export class HighlightOverlay {
 		if (this.activeId === id) {
 			const anchor = group.icon ?? group.elements[0];
 			if (!anchor) {
-				this.closeEditor();
 				return;
 			}
 			this.activeAnchor = anchor;
@@ -226,7 +266,7 @@ export class HighlightOverlay {
 		}
 
 		for (const rect of group.rects) {
-			if (!rect.pageEl.isConnected) {
+			if (!rect.pageEl?.isConnected) {
 				continue;
 			}
 			const fallbackHost = rect.pageEl.closest<HTMLElement>(".workspace-leaf-content") ?? this.hostFromViewer(rect.pageEl);
@@ -240,10 +280,7 @@ export class HighlightOverlay {
 
 	private findOpenPdfHost(filePath?: string): HTMLElement | null {
 		const leaves: LeafLike[] = [];
-		const workspace = this.app.workspace as typeof this.app.workspace & {
-			iterateAllLeaves?: (callback: (leaf: LeafLike) => void) => void;
-		};
-		workspace.iterateAllLeaves?.((leaf) => leaves.push(leaf));
+		this.app.workspace.iterateAllLeaves((leaf) => leaves.push(leaf));
 		if (leaves.length === 0) {
 			leaves.push(...this.app.workspace.getLeavesOfType("pdf") as LeafLike[]);
 		}
@@ -283,7 +320,7 @@ export class HighlightOverlay {
 		return viewer?.closest<HTMLElement>(".workspace-leaf-content") ?? viewer ?? null;
 	}
 
-	private resolvePageElement(rect: PdfSelectionOverlayRect, host: HTMLElement): HTMLElement | null {
+	private resolvePageElement(rect: OverlayRect, host: HTMLElement): HTMLElement | null {
 		const pages = Array.from(host.querySelectorAll<HTMLElement>(PAGE_SELECTOR));
 		if (rect.pageNumber) {
 			const page = pages.find((pageEl) => getPageNumber(pageEl) === rect.pageNumber);
@@ -292,7 +329,7 @@ export class HighlightOverlay {
 			}
 		}
 
-		return rect.pageEl.isConnected && host.contains(rect.pageEl) ? rect.pageEl : null;
+		return rect.pageEl?.isConnected && host.contains(rect.pageEl) ? rect.pageEl : null;
 	}
 
 	private ensureLayer(host: HTMLElement): HTMLElement {
@@ -317,25 +354,27 @@ export class HighlightOverlay {
 		return next;
 	}
 
-	private observeDocument(doc: Document): void {
-		if (this.observedDocuments.has(doc) || !doc.body) {
+	private observeHost(host: HTMLElement): void {
+		const doc = host.ownerDocument;
+		this.registerDocumentListeners(doc);
+		if (this.hostObservers.has(host)) {
 			return;
 		}
 
-		this.observedDocuments.add(doc);
-		const observer = new MutationObserver((mutations) => {
+		const MutationObserverCtor = doc.defaultView?.MutationObserver ?? MutationObserver;
+		const observer = new MutationObserverCtor((mutations) => {
 			if (!mutations.some((mutation) => this.shouldRerenderForMutation(mutation))) {
 				return;
 			}
 			this.scheduleRerender();
 		});
-		observer.observe(doc.body, {
+		observer.observe(host, {
 			attributes: true,
 			attributeFilter: ["class", "style", "data-page-number"],
 			childList: true,
 			subtree: true,
 		});
-		this.observers.push(observer);
+		this.hostObservers.set(host, observer);
 	}
 
 	private shouldRerenderForMutation(mutation: MutationRecord): boolean {
@@ -351,7 +390,7 @@ export class HighlightOverlay {
 
 		if (
 			target.instanceOf(Element) &&
-			(target.closest(PAGE_SELECTOR) || target.closest(PDF_VIEWER_SELECTOR) || target.closest(".workspace-leaf-content"))
+			(target.closest(PAGE_SELECTOR) || target.closest(PDF_VIEWER_SELECTOR))
 		) {
 			return true;
 		}
@@ -359,10 +398,9 @@ export class HighlightOverlay {
 		return changedNodes.some((node) => (
 			node.instanceOf(Element) &&
 			(
-				node.matches(PAGE_SELECTOR) ||
-				node.matches(PDF_VIEWER_SELECTOR) ||
-				node.matches(".workspace-leaf-content") ||
-				Boolean(node.querySelector(`${PAGE_SELECTOR}, ${PDF_VIEWER_SELECTOR}`))
+					node.matches(PAGE_SELECTOR) ||
+					node.matches(PDF_VIEWER_SELECTOR) ||
+					Boolean(node.querySelector(`${PAGE_SELECTOR}, ${PDF_VIEWER_SELECTOR}`))
 			)
 		));
 	}
@@ -389,6 +427,15 @@ export class HighlightOverlay {
 			if (!host.isConnected || layer.childElementCount === 0) {
 				layer.remove();
 				this.layers.delete(host);
+				host.classList.remove(HOST_CLASS);
+				this.hostObservers.get(host)?.disconnect();
+				this.hostObservers.delete(host);
+			}
+		}
+		for (const [host, observer] of this.hostObservers) {
+			if (!host.isConnected) {
+				observer.disconnect();
+				this.hostObservers.delete(host);
 			}
 		}
 	}
@@ -422,7 +469,6 @@ export class HighlightOverlay {
 		iconEl.onclick = (event) => {
 			event.preventDefault();
 			event.stopPropagation();
-			this.openEditor(id, iconEl);
 		};
 		layer.appendChild(iconEl);
 		group.icon = iconEl;
@@ -434,24 +480,34 @@ export class HighlightOverlay {
 			return;
 		}
 
+		if (this.activeId && this.activeId !== id) {
+			this.commitActiveEditor();
+		}
+		this.onEditorOpen();
 		this.activeId = id;
 		this.activeAnchor = anchorEl;
-		this.ensureEditor();
+		this.ensureEditor(anchorEl.ownerDocument);
 		if (!this.editorEl || !this.textareaEl) {
 			return;
 		}
 
 		this.textareaEl.value = group.note;
-		this.textareaEl.style.borderColor = group.color.css;
+		this.editorEl.style.setProperty("--pdf-ollama-translator-note-color", group.color.css);
 		this.editorEl.show();
 		this.repositionEditor();
 		this.textareaEl.focus();
 	}
 
 	private closeEditor(): void {
+		this.commitActiveEditor();
 		this.activeId = "";
 		this.activeAnchor = undefined;
 		this.editorEl?.hide();
+	}
+
+	private setOverlayInteractivity(overlay: HTMLElement, note: string): void {
+		const hasNote = Boolean(note.trim());
+		overlay.toggleClass("pdf-ollama-translator-highlight-overlay--has-note", hasNote);
 	}
 
 	private repositionEditor(): void {
@@ -460,7 +516,9 @@ export class HighlightOverlay {
 		}
 
 		if (!this.activeAnchor.ownerDocument.body.contains(this.activeAnchor)) {
-			this.closeEditor();
+			// PDF.js temporarily replaces page and annotation layers while the file is
+			// reloaded. Keep the editor open until renderGroup rebinds its anchor.
+			this.scheduleRerender();
 			return;
 		}
 
@@ -469,26 +527,41 @@ export class HighlightOverlay {
 		const margin = 12;
 		const rightSideLeft = anchorRect.right + 8;
 		const leftSideLeft = anchorRect.left - editorRect.width - 8;
-		const preferredLeft = rightSideLeft + editorRect.width + margin <= window.innerWidth
+		const ownerWindow = this.editorEl.ownerDocument.defaultView ?? window;
+		const preferredLeft = rightSideLeft + editorRect.width + margin <= ownerWindow.innerWidth
 			? rightSideLeft
 			: leftSideLeft;
-		const left = clamp(preferredLeft, margin, window.innerWidth - editorRect.width - margin);
-		const top = clamp(anchorRect.top, margin, window.innerHeight - editorRect.height - margin);
+		const left = clamp(preferredLeft, margin, ownerWindow.innerWidth - editorRect.width - margin);
+		const top = clamp(anchorRect.top, margin, ownerWindow.innerHeight - editorRect.height - margin);
 		this.editorEl.style.left = `${left}px`;
 		this.editorEl.style.top = `${top}px`;
 	}
 
-	private ensureEditor(): void {
-		if (this.editorEl && this.textareaEl) {
+	private ensureEditor(doc: Document): void {
+		if (this.editorEl?.ownerDocument === doc && this.textareaEl) {
 			return;
 		}
+		this.editorEl?.remove();
+		this.editorEl = undefined;
+		this.textareaEl = undefined;
 
-		this.editorEl = activeDocument.body.createDiv({ cls: "pdf-ollama-translator-highlight-note-editor" });
+		this.editorEl = doc.body.createDiv({ cls: EDITOR_CLASS });
 		this.editorEl.hide();
 		this.textareaEl = this.editorEl.createEl("textarea", {
 			cls: "pdf-ollama-translator-highlight-note-editor__textarea",
 			attr: { placeholder: "Add note" },
 		});
+		const footerEl = this.editorEl.createDiv({ cls: "pdf-ollama-translator-highlight-note-editor__footer" });
+		const copyButton = footerEl.createEl("button", {
+			cls: "pdf-ollama-translator-highlight-note-editor__copy",
+			attr: { "aria-label": t("highlight.copyNote"), title: t("highlight.copyNote") },
+		});
+		copyButton.onpointerdown = (event) => event.preventDefault();
+		setIcon(copyButton, "copy");
+		copyButton.onClickEvent(async () => {
+			await navigator.clipboard.writeText(this.textareaEl?.value ?? "");
+		});
+
 		this.textareaEl.oninput = () => {
 			const group = this.groups.get(this.activeId);
 			if (!group || !this.textareaEl) {
@@ -505,14 +578,31 @@ export class HighlightOverlay {
 		this.registerGlobalListeners();
 	}
 
+	private commitActiveEditor(): void {
+		const group = this.groups.get(this.activeId);
+		if (group && this.textareaEl) {
+			group.onNoteChange(this.textareaEl.value, true);
+		}
+	}
+
 	private registerGlobalListeners(): void {
 		if (this.listenersRegistered) {
 			return;
 		}
 		this.listenersRegistered = true;
-		activeDocument.addEventListener("pointerdown", this.handleDocumentPointerDown, true);
-		activeDocument.addEventListener("scroll", this.handleViewportChange, true);
+		this.registerDocumentListeners(activeDocument);
 		window.addEventListener("resize", this.handleViewportChange);
+	}
+
+	private registerDocumentListeners(doc: Document): void {
+		if (this.interactionDocuments.has(doc)) {
+			return;
+		}
+		this.interactionDocuments.add(doc);
+		doc.addEventListener("pointerdown", this.handleDocumentPointerDown, true);
+		doc.addEventListener("pointerup", this.handleDocumentPointerUp, true);
+		doc.addEventListener("scroll", this.handleViewportChange, true);
+		this.observeNativePopups(doc);
 	}
 
 	private handleViewportChange = (): void => {
@@ -521,12 +611,36 @@ export class HighlightOverlay {
 	};
 
 	private handleDocumentPointerDown = (event: PointerEvent): void => {
+		const targetNode = eventTargetNode(event.target);
+		if (
+			targetNode &&
+			(
+				this.editorEl?.contains(targetNode) ||
+				this.activeAnchor?.contains(targetNode) ||
+				eventTargetElement(event.target)?.closest(`.${NOTE_ICON_CLASS}`)
+			)
+		) {
+			return;
+		}
+
+		const doc = eventDocument(event);
+		if (event.button === 0 && doc) {
+			const hit = this.findGroupAt(event.clientX, event.clientY, doc);
+			if (hit) {
+				this.suppressEmptyNativePopup(doc);
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				if (hit.group.note.trim() || this.isSecondBlankHighlightClick(hit.id)) {
+					this.openEditor(hit.id, hit.group.icon ?? hit.element);
+				}
+				return;
+			}
+		}
+
 		if (!this.editorEl || this.editorEl.style.display === "none") {
 			return;
 		}
 
-		const target = event.target;
-		const targetNode = target instanceof Node ? target : null;
 		if (
 			targetNode &&
 			(this.editorEl.contains(targetNode) || this.activeAnchor?.contains(targetNode))
@@ -536,10 +650,126 @@ export class HighlightOverlay {
 
 		this.closeEditor();
 	};
+
+	private handleDocumentPointerUp = (event: PointerEvent): void => {
+		if (event.button !== 0) {
+			return;
+		}
+		const doc = eventDocument(event);
+		if (!doc) {
+			return;
+		}
+		const hit = this.findGroupAt(event.clientX, event.clientY, doc);
+		if (!hit) {
+			return;
+		}
+
+		this.suppressEmptyNativePopup(doc);
+		event.preventDefault();
+		event.stopImmediatePropagation();
+	};
+
+	private observeNativePopups(doc: Document): void {
+		if (this.popupObservers.has(doc) || !doc.body) {
+			return;
+		}
+		const MutationObserverCtor = doc.defaultView?.MutationObserver ?? MutationObserver;
+		const observer = new MutationObserverCtor((mutations) => {
+			if ((this.nativePopupSuppressionUntil.get(doc) ?? 0) < Date.now()) {
+				return;
+			}
+			for (const mutation of mutations) {
+				for (const node of Array.from(mutation.addedNodes)) {
+					this.removeEmptyNativePopups(node);
+				}
+			}
+		});
+		observer.observe(doc.body, { childList: true, subtree: true });
+		this.popupObservers.set(doc, observer);
+	}
+
+	private suppressEmptyNativePopup(doc: Document): void {
+		this.nativePopupSuppressionUntil.set(doc, Date.now() + 1000);
+		this.removeEmptyNativePopups(doc);
+		doc.defaultView?.queueMicrotask(() => this.removeEmptyNativePopups(doc));
+	}
+
+	private removeEmptyNativePopups(root: Node | Document): void {
+		const wrappers = new Set<Element>();
+		const element = nodeElement(root);
+		const closestWrapper = element?.closest(NATIVE_POPUP_WRAPPER_SELECTOR);
+		if (closestWrapper) {
+			wrappers.add(closestWrapper);
+		}
+		if ("querySelectorAll" in root) {
+			for (const wrapper of Array.from(root.querySelectorAll(NATIVE_POPUP_WRAPPER_SELECTOR))) {
+				wrappers.add(wrapper);
+			}
+		}
+		for (const wrapper of wrappers) {
+			const content = wrapper.querySelector(NATIVE_POPUP_CONTENT_SELECTOR);
+			if (content && !content.textContent?.trim()) {
+				wrapper.remove();
+			}
+		}
+	}
+
+	private findGroupAt(x: number, y: number, doc?: Document): { id: string; group: OverlayGroup; element: HTMLElement } | null {
+		for (const [id, group] of [...this.groups.entries()].reverse()) {
+			const element = group.elements.find((candidate) =>
+				(!doc || candidate.ownerDocument === doc) && containsPoint(candidate.getBoundingClientRect(), x, y),
+			);
+			if (element) {
+				return { id, group, element };
+			}
+		}
+		return null;
+	}
+
+	private isSecondBlankHighlightClick(id: string): boolean {
+		const now = Date.now();
+		const isSecondClick = this.lastBlankHighlightClick?.id === id
+			&& now - this.lastBlankHighlightClick.at <= 500;
+		this.lastBlankHighlightClick = isSecondClick ? undefined : { id, at: now };
+		return isSecondClick;
+	}
 }
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+function containsPoint(rect: DOMRect, x: number, y: number): boolean {
+	return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
+function eventDocument(event: Event): Document | undefined {
+	const currentTarget = event.currentTarget;
+	return currentTarget && typeof currentTarget === "object" && "nodeType" in currentTarget
+		&& currentTarget.nodeType === 9
+		? currentTarget as Document
+		: undefined;
+}
+
+function eventTargetNode(target: EventTarget | null): Node | null {
+	return target && typeof target === "object" && "nodeType" in target
+		? target as Node
+		: null;
+}
+
+function eventTargetElement(target: EventTarget | null): Element | null {
+	const node = eventTargetNode(target);
+	return nodeElement(node);
+}
+
+function nodeElement(node: Node | Document | null): Element | null {
+	if (!node) {
+		return null;
+	}
+	if (node.nodeType === 1) {
+		return node as Element;
+	}
+	return "parentElement" in node ? node.parentElement : null;
 }
 
 function isManagedNode(node: Node): boolean {

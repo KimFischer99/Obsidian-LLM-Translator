@@ -1,12 +1,13 @@
 {
 	"name": "llm-translator",
-	"version": "0.3.5",
+	"version": "0.4.0",
 	"description": "Translate selected PDF text in Obsidian with local and cloud translation services.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"test": "node tests/run-tests.mjs",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint ."
 	},

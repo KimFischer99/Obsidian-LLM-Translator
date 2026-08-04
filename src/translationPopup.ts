@@ -82,7 +82,7 @@ export class TranslationPopup {
 		}
 	}
 
-	showLoading(sourceText: string, rect: DOMRect): void {
+	showLoading(rect: DOMRect): void {
 		this.lastResult = "";
 		this.render("loading", t("popup.translating"));
 		this.showAt(rect);
@@ -95,13 +95,13 @@ export class TranslationPopup {
 		this.fitToContent();
 	}
 
-	showError(sourceText: string, message: string, rect: DOMRect): void {
+	showError(message: string, rect: DOMRect): void {
 		this.lastResult = "";
 		this.render("error", message);
 		this.showAt(rect);
 	}
 
-	showInfo(sourceText: string, message: string, rect: DOMRect): void {
+	showInfo(message: string, rect: DOMRect): void {
 		this.lastResult = "";
 		this.render("error", message);
 		this.showAt(rect);

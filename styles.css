@@ -124,6 +124,7 @@
 }
 
 .pdf-ollama-translator-popup__result {
+	user-select: text;
 	text-align: justify;
 	white-space: pre-wrap;
 	word-break: break-word;
@@ -135,13 +136,6 @@
 
 .pdf-ollama-translator-popup__error {
 	color: var(--text-error);
-}
-
-.annotationLayer.annotationLayer :is(.highlightAnnotation, .popupAnnotation) :is(.annotationCommentButton, .commentButton),
-.annotationLayer.annotationLayer .annotationCommentButton {
-	display: none;
-	visibility: hidden;
-	pointer-events: none;
 }
 
 .pdf-ollama-translator-highlight-host {
@@ -159,38 +153,89 @@
 	position: absolute;
 	z-index: 1;
 	border-radius: 2px;
+	background: transparent;
 	mix-blend-mode: multiply;
-	pointer-events: auto;
-	cursor: text;
+	pointer-events: none;
+	cursor: default;
 	opacity: 0.38;
+}
+
+.pdf-ollama-translator-highlight-overlay--has-note {
+	pointer-events: none;
+	cursor: default;
 }
 
 .pdf-ollama-translator-highlight-note-editor {
 	position: fixed;
 	z-index: calc(var(--layer-popover) + 2);
 	width: 240px;
-	min-height: 96px;
-	padding: 8px;
-	border: 1px solid var(--background-modifier-border);
+	height: 140px;
+	min-width: 180px;
+	min-height: 126px;
+	max-width: calc(100vw - 24px);
+	max-height: calc(100vh - 24px);
+	display: block;
+	box-sizing: border-box;
+	padding: 0;
+	border: 3px solid var(--pdf-ollama-translator-note-color, var(--background-modifier-border));
 	border-radius: 8px;
 	background: var(--background-primary);
 	box-shadow: var(--shadow-l);
+	overflow: hidden;
+	resize: both;
 }
 
-.pdf-ollama-translator-highlight-note-editor__textarea {
+.pdf-ollama-translator-highlight-note-editor .pdf-ollama-translator-highlight-note-editor__textarea {
 	width: 100%;
-	min-height: 88px;
+	height: 100%;
+	min-height: 0;
+	position: absolute;
+	inset: 0;
 	margin: 0;
-	padding: 8px;
-	border: 2px solid var(--background-modifier-border);
-	border-radius: 6px;
+	box-sizing: border-box;
+	padding: 12px 12px 44px;
+	border: 0;
+	border-radius: 0;
 	background: var(--background-primary);
 	color: var(--text-normal);
 	font: inherit;
 	font-size: var(--font-ui-small);
 	line-height: 1.5;
-	resize: vertical;
+	resize: none;
 	box-shadow: none;
+	outline: 0;
+}
+
+.pdf-ollama-translator-highlight-note-editor .pdf-ollama-translator-highlight-note-editor__footer {
+	position: absolute;
+	left: 8px;
+	bottom: 8px;
+	height: 28px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	z-index: 1;
+}
+
+.pdf-ollama-translator-highlight-note-editor__copy {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--text-muted);
+	box-shadow: none;
+}
+
+.pdf-ollama-translator-highlight-note-editor__copy:hover,
+.pdf-ollama-translator-highlight-note-editor__copy:focus-visible {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
 }
 
 .pdf-ollama-translator-highlight-note-icon {
@@ -242,12 +287,19 @@
 }
 
 .pdf-ollama-translator-sidebar {
+	box-sizing: border-box;
 	display: flex;
 	height: 100%;
+	min-width: 368px;
 	flex-direction: column;
 	gap: 10px;
 	padding: 12px;
 	overflow: hidden;
+}
+
+.pdf-ollama-translator-sidebar-leaf,
+.pdf-ollama-translator-sidebar-split {
+	min-width: 368px;
 }
 
 .pdf-ollama-translator-sidebar__header {
@@ -348,6 +400,7 @@
 }
 
 .pdf-ollama-translator-sidebar__panel {
+	user-select: text;
 	overflow: auto;
 	min-height: 120px;
 	padding: 10px;
@@ -360,6 +413,14 @@
 	text-align: left;
 	white-space: pre-wrap;
 	word-break: break-word;
+}
+
+.pdf-ollama-translator-sidebar__source {
+	width: 100%;
+	min-height: 120px;
+	resize: vertical;
+	font: inherit;
+	text-align: left;
 }
 
 .pdf-ollama-translator-sidebar__panel--result {
@@ -386,46 +447,40 @@
 
 .pdf-ollama-translator-sidebar__control-row {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-columns: 80px minmax(0, 1fr);
 	align-items: center;
-	gap: 10px;
+	gap: 8px;
 	min-height: 40px;
 	padding: 4px 0;
 }
 
-.pdf-ollama-translator-sidebar__highlight-row {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
+.pdf-ollama-translator-sidebar__control-actions {
+	display: flex;
 	align-items: center;
-	gap: 10px;
-	min-height: 40px;
-	padding: 4px 0;
+	justify-content: flex-start;
+	flex-wrap: nowrap;
+	gap: 8px;
+	min-width: 0;
 }
 
 .pdf-ollama-translator-sidebar__highlight-palette {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
+	width: auto;
 }
 
-.pdf-ollama-translator-sidebar__quick-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 24px;
-	min-height: 40px;
-	padding: 4px 0;
+.pdf-ollama-translator-sidebar__clear-highlights-button {
+	margin-left: 0;
+	flex: 0 0 auto;
 }
 
-.pdf-ollama-translator-sidebar__quick-group {
-	display: inline-flex;
-	align-items: center;
-	gap: 10px;
-	min-width: 0;
+.pdf-ollama-translator-sidebar__clear-highlights-button:hover,
+.pdf-ollama-translator-sidebar__clear-highlights-button:focus-visible {
+	border-color: var(--text-error);
+	color: var(--text-error);
 }
 
 .pdf-ollama-translator-sidebar__highlight-palette .pdf-ollama-translator-sidebar__highlight-swatch {
 	appearance: none;
+	flex: 0 0 22px;
 	width: 22px;
 	height: 22px;
 	padding: 0;
@@ -481,10 +536,6 @@
 }
 
 .pdf-ollama-translator-sidebar__copy-row {
-	display: grid;
-	grid-template-columns: auto repeat(3, minmax(0, 1fr));
-	align-items: center;
-	gap: 6px;
 	margin-top: 8px;
 }
 
@@ -496,5 +547,7 @@
 }
 
 .pdf-ollama-translator-sidebar__copy-button {
+	flex: 0 0 auto;
+	padding: 0 12px;
 	text-align: center;
 }

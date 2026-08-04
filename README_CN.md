@@ -47,7 +47,7 @@
 ### 🎯 智能交互
 
 - 选中文本自动弹出翻译窗口
-- 侧边栏翻译面板，支持手动输入
+- 侧边栏翻译面板，支持手动输入或使用当前选区
 - 复制译文 / 重试翻译 / 一键切换语言
 - 自定义翻译 Prompt，满足专业需求
 
@@ -90,11 +90,11 @@ ollama pull RogerBen/HY-MT2-1.8B:latest
 mkdir -p YourVault/.obsidian/plugins/llm-translator
 
 # 下载 Release 文件
-curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/download/0.3.0/main.js \
+curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/latest/download/main.js \
   -o YourVault/.obsidian/plugins/llm-translator/main.js
-curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/download/0.3.0/manifest.json \
+curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/latest/download/manifest.json \
   -o YourVault/.obsidian/plugins/llm-translator/manifest.json
-curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/download/0.3.0/styles.css \
+curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/latest/download/styles.css \
   -o YourVault/.obsidian/plugins/llm-translator/styles.css
 ```
 
@@ -120,7 +120,7 @@ curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/downlo
 |--------|--------|
 | 翻译服务 | Local LLM |
 | 本地模型端口 | `http://localhost:11434` |
-| 模型名称 | `hy-mt2-1.8b-q4:latest` |
+| 模型名称 | `RogerBen/HY-MT2-1.8B:latest` |
 | 源语言 | Auto |
 | 目标语言 | 简体中文 |
 
@@ -144,17 +144,20 @@ curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/downlo
 
 1. **自动翻译** — 选中 PDF 或 Markdown 文本，翻译弹窗自动出现
 2. **侧边栏** — 点击左侧工具栏语言图标，打开右侧翻译面板
-3. **手动翻译** — 在侧边栏输入文本，点击 Translate 按钮
+3. **从侧边栏翻译** — 直接输入文本，或复用 PDF/Markdown 当前选区，再点击翻译按钮
 
 ### 翻译范围设置
 
 - **全局** — PDF 和 Markdown 文件均可划词翻译
-- **仅 PDF** — 只在 PDF 文件中启用（默认）
+- **仅 PDF** — 只在 PDF 文件中启用
+
+默认翻译范围为 **全局**。
 
 ### 侧边栏功能
 
 - **翻译服务切换** — 快速切换 Local LLM / Cloud API / Google / Bing
 - **语言选择** — 设置源语言和目标语言
+- **手动输入 / 当前选区** — 直接输入文本，或复用最近一次文档选区
 - **Auto-Trans** — 开启/关闭自动翻译
 - **Copy** — 复制原文（Raw）、译文（Result）或全部（Both）
 - **Clear** — 清空当前翻译记录
@@ -187,6 +190,15 @@ citations, and formulas. Output only the translation.
 无需任何配置，在翻译服务下拉菜单中直接选择即可使用。
 
 > ⚠️ 免费翻译服务存在调用频率限制，大量使用建议切换至本地模型或云端 API。
+
+### 隐私与网络访问
+
+- **本地大模型**会把选中文本和翻译 Prompt 发送到配置的 Ollama 端点。使用默认的 `http://localhost:11434` 时，请求仅在本机；改用远程端点时，数据会经网络发送。
+- **云端 API**会把选中文本、翻译 Prompt、语言设置和模型标识发送到你配置的 API 地址。服务商可能按其隐私政策保留或处理这些数据。
+- **Google 翻译 / Bing 翻译**会把选中文本和语言设置发送给 Google 或 Microsoft 的翻译服务。
+- **Cloud API Key** 通过 Obsidian `SecretStorage` 选择或创建；插件的 `data.json` 只保存所选密钥 ID，不保存密钥值。
+
+LLM Translator 0.4.0 要求 Obsidian 1.11.4 或更高版本。Obsidian 的版本解析机制可让旧版应用继续停留在插件 0.3.5。
 
 ---
 
@@ -235,6 +247,9 @@ npm run dev
 
 # 生产构建
 npm run build
+
+# 自动化行为测试
+npm test
 ```
 
 构建后将 `main.js`、`manifest.json`、`styles.css` 复制到：

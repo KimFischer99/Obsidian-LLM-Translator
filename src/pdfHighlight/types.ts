@@ -29,7 +29,23 @@ export interface LocatedPdfHighlight {
 	quads: PdfHighlightQuad[];
 }
 
+export interface PersistedPdfHighlight {
+	id: string;
+	location: LocatedPdfHighlight;
+	color: [number, number, number];
+	note: string;
+	overlayRects: Array<{
+		pageNumber: number;
+		leftRatio: number;
+		topRatio: number;
+		widthRatio: number;
+		heightRatio: number;
+	}>;
+}
+
 export type PdfHighlightToggleResult =
 	| { action: "added"; count: number }
 	| { action: "removed"; count: number }
 	| { action: "updated"; count: number };
+
+export type PdfHighlightToggleOutcome = PdfHighlightToggleResult & { note: string };
