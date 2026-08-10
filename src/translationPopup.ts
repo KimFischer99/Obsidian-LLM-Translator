@@ -207,7 +207,12 @@ export class TranslationPopup {
 				targetSelect.value = previousSource;
 			}
 			updateLanguages();
-			this.options.onRetry();
+			// Change: removed this.options.onRetry() call here.
+			// swap is a "language settings adjustment" action, not an "translate now" command.
+			// After swapping, the user should explicitly trigger translation via the retry button
+			// (popup refresh-cw icon) when a re-translation in the new language pair is desired.
+			// To restore the previous behavior, uncomment the next line:
+			// this.options.onRetry();
 		});
 	}
 

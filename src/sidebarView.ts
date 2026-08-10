@@ -170,7 +170,12 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 				sourceLanguage: sourceEl.value as TranslationLanguage,
 				targetLanguage: targetEl.value as Exclude<TranslationLanguage, "auto">,
 			});
-			void this.plugin.translateActiveSelectionFromSidebar();
+			// Change: removed this.plugin.translateActiveSelectionFromSidebar() call here.
+			// swap is a "language settings adjustment" action, not an "translate now" command.
+			// After swapping, the user should explicitly trigger translation via the sidebar's
+			// "Translate input" or "Use current selection" button.
+			// To restore the previous behavior, uncomment the next line:
+			// void this.plugin.translateActiveSelectionFromSidebar();
 		});
 	}
 

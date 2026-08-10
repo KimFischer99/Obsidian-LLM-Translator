@@ -241,7 +241,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			new Notice(t("notice.selectTextFirst"));
 			return;
 		}
-		await this.translateSelection(selection, true);
+		await this.translateSelection(selection, false);
 	}
 
 	async translateSidebarText(text: string, rect: DOMRect): Promise<void> {
@@ -251,7 +251,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			return;
 		}
 
-		await this.translateSelection({ text: sourceText, rect }, true);
+		await this.translateSelection({ text: sourceText, rect }, false);
 	}
 
 	async highlightActiveSelection(): Promise<void> {
@@ -408,7 +408,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			item
 				.setTitle(t("contextMenu.translate"))
 				.setIcon("languages")
-				.onClick(() => void this.translateSelection(selection, true));
+				.onClick(() => void this.translateSelection(selection, false));
 		});
 		menu.addItem((item) => {
 			item
