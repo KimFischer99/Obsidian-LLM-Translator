@@ -30,6 +30,7 @@ const SETTINGS: PdfOllamaTranslatorSettings = {
 	cloudApiModel: "test-cloud-model",
 	autoTranslateSelection: true,
 	enablePopup: true,
+	enableContextMenu: true,
 	restrictSourceLanguages: false,
 	sourceLanguage: "auto",
 	targetLanguage: "zh-Hans",

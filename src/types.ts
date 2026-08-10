@@ -10,6 +10,7 @@ export interface PdfOllamaTranslatorSettings {
 	cloudApiModel: string;
 	autoTranslateSelection: boolean;
 	enablePopup: boolean;
+	enableContextMenu: boolean;
 	restrictSourceLanguages: boolean;
 	sourceLanguage: TranslationLanguage;
 	targetLanguage: Exclude<TranslationLanguage, "auto">;

@@ -11,6 +11,7 @@
     "pdfOnly": "仅 PDF",
     "autoTranslateSelection": "自动翻译选中文本",
     "enablePopup": "启用阅读器划词弹窗",
+    "enableContextMenu": "启用右键菜单翻译",
     "translationService": "翻译服务",
     "sourceLanguage": "源语言",
     "targetLanguage": "目标语言",
@@ -82,6 +83,10 @@
   },
   "highlight": {
     "copyNote": "复制批注"
+  },
+  "contextMenu": {
+    "translate": "翻译",
+    "copy": "复制"
   },
   "notice": {
     "nothingToCopy": "没有可复制的内容。",

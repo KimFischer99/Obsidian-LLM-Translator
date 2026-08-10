@@ -65,6 +65,16 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 					}),
 			);
 
+		new Setting(containerEl)
+			.setName(t("settings.enableContextMenu"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableContextMenu)
+					.onChange(async (value) => {
+						await this.plugin.updateSettings({ enableContextMenu: value });
+					}),
+			);
+
 		this.addSection(t("settings.section.service"));
 		new Setting(containerEl)
 			.setName(t("settings.translationService"))

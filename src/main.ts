@@ -1,4 +1,4 @@
-import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
+import { Menu, Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { getProviderLabel, TranslatorService } from "./translatorService";
 import { DEFAULT_TRANSLATION_PROMPT } from "./translatorService";
 import { PdfSelectionReader } from "./pdfSelection";
@@ -25,6 +25,7 @@ const DEFAULT_SETTINGS: PdfOllamaTranslatorSettings = {
 	cloudApiModel: "",
 	autoTranslateSelection: true,
 	enablePopup: true,
+	enableContextMenu: true,
 	restrictSourceLanguages: true,
 	sourceLanguage: "auto",
 	targetLanguage: "zh-Hans",
@@ -119,6 +120,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			callback: () => void this.activateSidebarView(),
 		});
 		this.registerSelectionEvents();
+		this.registerContextMenu();
 		this.registerWorkspaceEvents();
 	}
 
@@ -346,6 +348,71 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 				this.highlightService.refreshOverlays();
 			}),
 		);
+	}
+
+	private registerContextMenu(): void {
+		this.registerEvent(
+			this.app.workspace.on("editor-menu", (menu, editor) => {
+				if (!this.settings.enableContextMenu) {
+					return;
+				}
+				const text = editor.getSelection().trim();
+				if (!text) {
+					return;
+				}
+				menu.addItem((item) => {
+					item
+						.setTitle(t("contextMenu.translate"))
+						.setIcon("languages")
+						.onClick(() => void this.translateActiveSelectionFromSidebar());
+				});
+			}),
+		);
+		this.registerDomEvent(activeDocument, "contextmenu", (event) => this.handleContextMenu(event), true);
+	}
+
+	private handleContextMenu(event: MouseEvent): void {
+		if (!this.settings.enableContextMenu) {
+			return;
+		}
+		if (isHighlightNoteTarget(event.target)) {
+			return;
+		}
+		// Markdown views are handled by `editor-menu` above; only intercept right-clicks
+		// that actually land inside the active PDF container (not the sidebar, popup, etc.).
+		const pdfContainer = this.selectionReader.getActivePdfContainerEl();
+		if (!pdfContainer) {
+			return;
+		}
+		if (!(event.target instanceof Node) || !pdfContainer.contains(event.target)) {
+			return;
+		}
+
+		const selection = this.selectionReader.readSelection();
+		if (!selection) {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+
+		const menu = new Menu();
+		menu.addItem((item) => {
+			item
+				.setTitle(t("contextMenu.translate"))
+				.setIcon("languages")
+				.onClick(() => void this.translateSelection(selection, true));
+		});
+		menu.addItem((item) => {
+			item
+				.setTitle(t("contextMenu.copy"))
+				.setIcon("copy")
+				.onClick(async () => {
+					await navigator.clipboard.writeText(selection.text);
+					new Notice(t("notice.copied"));
+				});
+		});
+		menu.showAtMouseEvent(event);
 	}
 
 	private handleDocumentPointerDown(event: MouseEvent): void {
