@@ -33,6 +33,8 @@
     "cleanOutputDesc": "自动移除引号、代码块、翻译标签和 thinking 残留。",
     "debugLogging": "调试日志",
     "debugLoggingDesc": "在开发者控制台输出请求状态和错误摘要。",
+    "enableTranslationCache": "缓存翻译结果",
+    "enableTranslationCacheDesc": "对相同原文直接复用缓存结果，不再调用模型。",
     "localEndpoint": "本地模型端口",
     "modelName": "模型名称",
     "selectModel": "选择模型",

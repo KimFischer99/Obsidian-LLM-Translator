@@ -6,6 +6,7 @@ import { PdfOllamaTranslatorSettingTab } from "./settings";
 import { PDF_OLLAMA_TRANSLATOR_VIEW_TYPE, PdfOllamaTranslatorSidebarView } from "./sidebarView";
 import { TranslationPopup } from "./translationPopup";
 import { PdfHighlightService } from "./pdfHighlight/PdfHighlightService";
+import { TranslationCache, buildCacheKey, normalizeCacheText } from "./translationCache";
 import { t } from "./i18n";
 import type {
 	ConnectionTestResult,
@@ -26,6 +27,7 @@ const DEFAULT_SETTINGS: PdfOllamaTranslatorSettings = {
 	autoTranslateSelection: true,
 	enablePopup: true,
 	enableContextMenu: true,
+	enableTranslationCache: true,
 	restrictSourceLanguages: true,
 	sourceLanguage: "auto",
 	targetLanguage: "zh-Hans",
@@ -65,6 +67,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	private selectionReader: PdfSelectionReader;
 	private highlightService: PdfHighlightService;
 	private popup: TranslationPopup;
+	private cache: TranslationCache | undefined;
 	private selectionTimer: number | undefined;
 	private activeRequest: AbortController | undefined;
 	private lastSelection: PdfTextSelection | undefined;
@@ -80,6 +83,9 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
+
+		this.cache = new TranslationCache(this.app.vault.adapter, `${this.manifest.dir}/cache.json`);
+		await this.cache.load();
 
 		this.translator = new TranslatorService(
 			() => this.settings,
@@ -127,6 +133,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	onunload(): void {
 		this.cancelActiveRequest();
 		window.clearTimeout(this.selectionTimer);
+		void this.cache?.flush().catch(() => undefined);
 		this.highlightService?.flushAllPending();
 		this.highlightService?.destroy();
 		this.popup?.destroy();
@@ -534,6 +541,36 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			return;
 		}
 
+		const normalizedText = normalizeCacheText(selection.text);
+		const key = buildCacheKey(this.settings.sourceLanguage, this.settings.targetLanguage, normalizedText);
+		const cacheEnabled = !!this.cache && this.settings.enableTranslationCache && normalizedText.length > 0;
+		if (!force && cacheEnabled) {
+			const cached = this.cache!.get(key);
+			if (cached) {
+				this.lastSelection = selection;
+				this.lastSelectionKey = selectionKey;
+				this.cancelActiveRequest();
+				const showPopup = !this.isSidebarVisible();
+				const shouldShowPopup = showPopup && this.settings.enablePopup;
+				if (!shouldShowPopup) {
+					this.popup.hide();
+				}
+				this.presentSuccess(
+					{
+						sourceText: selection.text,
+						translatedText: cached.translatedText,
+						model: cached.model,
+						elapsedMs: 0,
+					},
+					selection.rect,
+					shouldShowPopup,
+				);
+				console.log("[LLM Translator] Cache hit.", { key, model: cached.model, cachedAt: cached.timestamp });
+				return;
+			}
+			console.log("[LLM Translator] Cache miss → calling model.", { key });
+		}
+
 		this.lastSelection = selection;
 		this.lastSelectionKey = selectionKey;
 		this.cancelActiveRequest();
@@ -568,15 +605,16 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 				signal: request.signal,
 			});
 			if (!request.signal.aborted) {
-				if (shouldShowPopup) {
-					this.showTranslationResult(result, selection.rect);
+				this.presentSuccess(result, selection.rect, shouldShowPopup);
+				if (cacheEnabled && result.translatedText) {
+					this.cache!.set(key, {
+						translatedText: result.translatedText,
+						model: result.model,
+						timestamp: Date.now(),
+						version: 1,
+					});
+					console.log("[LLM Translator] Cache write.", { key, model: result.model });
 				}
-				this.updateSidebarState({
-					sourceText: result.sourceText,
-					translatedText: result.translatedText,
-					status: "success",
-					message: "",
-				});
 			}
 		} catch (error) {
 			if (request.signal.aborted) {
@@ -601,8 +639,16 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 		}
 	}
 
-	private showTranslationResult(result: TranslationResult, rect: DOMRect): void {
-		this.popup.showResult(result, rect);
+	private presentSuccess(result: TranslationResult, rect: DOMRect, shouldShowPopup: boolean): void {
+		if (shouldShowPopup) {
+			this.popup.showResult(result, rect);
+		}
+		this.updateSidebarState({
+			sourceText: result.sourceText,
+			translatedText: result.translatedText,
+			status: "success",
+			message: "",
+		});
 	}
 
 	private getMissingProviderConfigMessage(): string {

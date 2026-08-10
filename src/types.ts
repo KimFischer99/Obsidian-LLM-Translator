@@ -11,6 +11,7 @@ export interface PdfOllamaTranslatorSettings {
 	autoTranslateSelection: boolean;
 	enablePopup: boolean;
 	enableContextMenu: boolean;
+	enableTranslationCache: boolean;
 	restrictSourceLanguages: boolean;
 	sourceLanguage: TranslationLanguage;
 	targetLanguage: Exclude<TranslationLanguage, "auto">;

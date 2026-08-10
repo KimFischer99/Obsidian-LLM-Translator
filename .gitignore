@@ -6,3 +6,4 @@ SPEC*
 *.spec.md
 .hotreload
 data.json
+cache.json

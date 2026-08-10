@@ -16,6 +16,7 @@ import {
 	TranslatorService,
 	truncateHttpErrorBody,
 } from "../src/translatorService";
+import { TranslationCache, buildCacheKey, normalizeCacheText } from "../src/translationCache";
 import type { PdfOllamaTranslatorSettings, TranslationRequest } from "../src/types";
 
 Object.defineProperty(globalThis, "window", { value: globalThis, configurable: true });
@@ -31,6 +32,7 @@ const SETTINGS: PdfOllamaTranslatorSettings = {
 	autoTranslateSelection: true,
 	enablePopup: true,
 	enableContextMenu: true,
+	enableTranslationCache: true,
 	restrictSourceLanguages: false,
 	sourceLanguage: "auto",
 	targetLanguage: "zh-Hans",
@@ -263,6 +265,69 @@ test("build metadata describes one release version", async () => {
 	assert.equal(versions[packageJson.version], manifest.minAppVersion);
 });
 
+test("translation cache keys contain only language pair and source text", () => {
+	assert.equal(buildCacheKey("en", "zh-Hans", "hello"), "en||zh-Hans||hello");
+	assert.equal(buildCacheKey("en", "zh-Hans", "hello"), buildCacheKey("en", "zh-Hans", "hello"));
+	assert.notEqual(buildCacheKey("en", "zh-Hans", "hello"), buildCacheKey("en", "zh-Hans", "hello "));
+	assert.notEqual(buildCacheKey("en", "zh-Hans", "hello"), buildCacheKey("en", "de", "hello"));
+});
+
+test("cache text normalization strips only edge whitespace and punctuation", () => {
+	// Edge whitespace and punctuation are removed; the middle is untouched.
+	assert.equal(normalizeCacheText("  Hello, world.  "), "Hello, world");
+	assert.equal(normalizeCacheText("…hello…"), "hello");
+	assert.equal(normalizeCacheText("　你好，世界。　"), "你好，世界");
+	assert.equal(normalizeCacheText("Hello, world"), "Hello, world");
+	assert.equal(normalizeCacheText(""), "");
+	assert.equal(normalizeCacheText(",,,"), "");
+
+	// The same sentence with different edge punctuation/whitespace shares one key.
+	assert.equal(
+		buildCacheKey("en", "zh-Hans", normalizeCacheText(" Hello, ")),
+		buildCacheKey("en", "zh-Hans", normalizeCacheText("Hello.")),
+	);
+});
+
+test("translation cache misses before load, hits after set, and persists to disk", async () => {
+	const adapter = new MemoryCacheAdapter();
+	const cache = new TranslationCache(adapter, "cache.json");
+
+	// Not loaded yet: safe miss, never throws.
+	assert.equal(cache.get("en||zh-Hans||hello"), null);
+
+	await cache.load();
+	assert.equal(cache.get("en||zh-Hans||hello"), null);
+
+	cache.set("en||zh-Hans||hello", { translatedText: "你好", model: "test-model", timestamp: 1, version: 1 });
+	assert.equal(cache.get("en||zh-Hans||hello")?.translatedText, "你好");
+
+	await cache.flush();
+	const parsed = JSON.parse(adapter.files.get("cache.json")!) as Record<string, { translatedText: string; model: string }>;
+	assert.equal(parsed["en||zh-Hans||hello"].translatedText, "你好");
+	assert.equal(parsed["en||zh-Hans||hello"].model, "test-model");
+});
+
+test("translation cache tolerates corrupted files and serializes concurrent writes", async () => {
+	// Corrupted file: load must not throw, cache starts empty.
+	const badAdapter = new MemoryCacheAdapter();
+	badAdapter.files.set("cache.json", "not-json{{{");
+	const badCache = new TranslationCache(badAdapter, "cache.json");
+	await badCache.load();
+	assert.equal(badCache.get("en||zh-Hans||hello"), null);
+
+	// Concurrent writes: all entries present, last write wins per key.
+	const adapter = new MemoryCacheAdapter();
+	const cache = new TranslationCache(adapter, "cache.json");
+	await cache.load();
+	cache.set("en||zh-Hans||a", { translatedText: "A", model: "m", timestamp: 1, version: 1 });
+	cache.set("en||zh-Hans||b", { translatedText: "B", model: "m", timestamp: 1, version: 1 });
+	cache.set("en||zh-Hans||a", { translatedText: "A2", model: "m", timestamp: 1, version: 1 });
+	await cache.flush();
+	const parsed = JSON.parse(adapter.files.get("cache.json")!) as Record<string, { translatedText: string }>;
+	assert.equal(parsed["en||zh-Hans||a"].translatedText, "A2");
+	assert.equal(parsed["en||zh-Hans||b"].translatedText, "B");
+});
+
 class MemoryVault {
 	private constructor(private bytes: ArrayBuffer) {}
 
@@ -284,6 +349,18 @@ class MemoryVault {
 	async annotationCount(): Promise<number> {
 		const pdf = await PDFDocument.load(this.bytes);
 		return pdf.getPage(0).node.lookupMaybe(PDFName.of("Annots"), PDFArray)?.size() ?? 0;
+	}
+}
+
+class MemoryCacheAdapter {
+	files = new Map<string, string>();
+
+	async read(path: string): Promise<string | null> {
+		return this.files.get(path) ?? null;
+	}
+
+	async write(path: string, data: string): Promise<void> {
+		this.files.set(path, data);
 	}
 }
 

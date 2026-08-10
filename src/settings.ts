@@ -266,6 +266,17 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
+			.setName(t("settings.enableTranslationCache"))
+			.setDesc(t("settings.enableTranslationCacheDesc"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableTranslationCache)
+					.onChange(async (value) => {
+						await this.plugin.updateSettings({ enableTranslationCache: value });
+					}),
+			);
+
+		new Setting(containerEl)
 			.setName(t("settings.debugLogging"))
 			.setDesc(t("settings.debugLoggingDesc"))
 			.addToggle((toggle) =>
