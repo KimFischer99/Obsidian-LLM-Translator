@@ -272,12 +272,22 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 		}
 
 		const captured = selection ?? this.selectionReader.readSelection() ?? this.lastDocumentSelection;
-		const anchor: PdfTextSelection =
-			captured && captured.text.trim() === sourceText
-				? captured
-				: { ...(captured ?? {}), text: sourceText, rect: captured?.rect ?? this.getViewportCenterRect() };
+		if (captured && captured.text.trim() === sourceText) {
+			await this.translateSelection(captured, false);
+			return;
+		}
 
-		await this.translateSelection(anchor, false);
+		// The captured geometry describes different text, so it cannot be reused:
+		// `overlayRects` and `pageHint` would make a later highlight land on the
+		// wrong words. Keep only the file and an anchor for the popup.
+		await this.translateSelection(
+			{
+				text: sourceText,
+				file: captured?.file,
+				rect: captured?.rect ?? this.getViewportCenterRect(),
+			},
+			false,
+		);
 	}
 
 	/** Anchor of last resort when a selection rect is no longer available. */

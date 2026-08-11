@@ -13,11 +13,25 @@ const PDF_PLUS_ID = "pdf-plus";
 const PDF_MENU_EVENT = "pdf-menu";
 
 /**
- * Marks a PDF.js viewer. Used both to recognise a viewer document inside an
- * iframe and to confirm a right-click actually landed on the page content
- * rather than the surrounding toolbar.
+ * Identifies a PDF.js viewer. Kept deliberately specific: `.page` and
+ * `.textLayer` alone are generic enough that another plugin's view could match,
+ * and attaching our interceptor to a non-PDF leaf would suppress its native menu.
  */
-const PDF_VIEWER_MARKERS = "#viewerContainer, .pdfViewer, .textLayer, .page";
+const PDF_VIEWER_MARKERS = "#viewerContainer, .pdfViewer";
+
+/**
+ * Confirms a right-click landed on page content rather than the toolbar or
+ * sidebar. Only consulted once the surrounding view is known to be a PDF, so
+ * the looser page-level classes are safe here.
+ */
+const PDF_PAGE_MARKERS = "#viewerContainer, .pdfViewer, .textLayer, .page";
+
+/**
+ * This plugin's own highlight UI, which is rendered into the page layer. Mirrors
+ * `isHighlightNoteTarget` in main.ts.
+ */
+const HIGHLIGHT_UI_MARKERS =
+	".pdf-ollama-translator-highlight-overlay, .pdf-ollama-translator-highlight-note-icon, .pdf-ollama-translator-highlight-note-editor";
 
 /** Coalesce the layout churn Obsidian emits while a leaf is opening. */
 const RESCAN_DEBOUNCE_MS = 150;
@@ -307,7 +321,12 @@ export class PdfContextMenuService {
 			return;
 		}
 		// Ignore clicks on the toolbar and other chrome around the pages.
-		if (!closestMatches(evt.target, PDF_VIEWER_MARKERS)) {
+		if (!closestMatches(evt.target, PDF_PAGE_MARKERS)) {
+			return;
+		}
+		// Our own highlight affordances live inside the page layer; right-clicking
+		// them should keep the native menu (copy/paste in the note editor).
+		if (closestMatches(evt.target, HIGHLIGHT_UI_MARKERS)) {
 			return;
 		}
 

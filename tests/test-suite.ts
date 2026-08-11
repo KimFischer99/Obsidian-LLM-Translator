@@ -266,7 +266,9 @@ test("pdf context menu stays non-destructive and PDF++ compatible", async () => 
 
 	// Assertions about forbidden calls must ignore prose, or a comment explaining
 	// why we avoid an API would fail the very check that guards it.
-	const contextMenuCode = contextMenu.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+	const stripComments = (source: string): string =>
+		source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+	const contextMenuCode = stripComments(contextMenu);
 
 	// The old implementation intercepted contextmenu on the parent document in
 	// the capture phase and stopped propagation, which erased every other
@@ -304,6 +306,12 @@ test("pdf context menu stays non-destructive and PDF++ compatible", async () => 
 	assert.match(collect, /querySelectorAll\("iframe"\)/);
 	assert.match(collect, /targets\.push\(container\)/);
 
+	// Deciding a leaf is a PDF must not rely on generic classes: matching `.page`
+	// in a Markdown view would attach the interceptor there and suppress its
+	// native menu — the exact bug this file exists to prevent.
+	assert.doesNotMatch(section("const PDF_VIEWER_MARKERS", "const PDF_PAGE_MARKERS"), /\.page|\.textLayer/);
+	assert.match(section("private isPdfLeaf", "private readFrameDocument"), /viewType === "pdf"/);
+
 	// The fallback interceptor must only broadcast: it adds no items itself (so
 	// our own broadcast cannot duplicate them), backs off when another handler
 	// already claimed the right-click, and re-checks PDF++ because enabling a
@@ -316,6 +324,19 @@ test("pdf context menu stays non-destructive and PDF++ compatible", async () => 
 	// Suppress the built-in menu with preventDefault only, and only once we
 	// actually have items to show.
 	assert.match(interceptor, /if \(!added\)[\s\S]*?evt\.preventDefault\(\)/);
+	// This plugin's own highlight UI sits inside the page layer; right-clicking it
+	// must keep the native menu so copy/paste still works in the note editor.
+	assert.match(interceptor, /HIGHLIGHT_UI_MARKERS/);
+	assert.match(contextMenu, /HIGHLIGHT_UI_MARKERS =[\s\S]*?highlight-note-editor/);
+
+	// Captured geometry describing different text must not be reused, or a later
+	// highlight would land on the wrong words.
+	const capturedCode = stripComments(
+		main.slice(main.indexOf("async translateCapturedSelection"), main.indexOf("private getViewportCenterRect")),
+	);
+	assert.ok(capturedCode.length > 0, "could not slice translateCapturedSelection");
+	assert.doesNotMatch(capturedCode, /\.\.\.\(captured/);
+	assert.doesNotMatch(capturedCode, /overlayRects|pageHint/);
 
 	// Items come solely from the `pdf-menu` listener, registered exactly once.
 	assert.equal((contextMenu.match(/menu\.addItem\(/g) ?? []).length, 2);
