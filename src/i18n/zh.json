@@ -11,6 +11,7 @@
     "pdfOnly": "仅 PDF",
     "autoTranslateSelection": "自动翻译选中文本",
     "enablePopup": "启用阅读器划词弹窗",
+    "enableContextMenu": "启用右键菜单翻译",
     "translationService": "翻译服务",
     "sourceLanguage": "源语言",
     "targetLanguage": "目标语言",
@@ -32,6 +33,8 @@
     "cleanOutputDesc": "自动移除引号、代码块、翻译标签和 thinking 残留。",
     "debugLogging": "调试日志",
     "debugLoggingDesc": "在开发者控制台输出请求状态和错误摘要。",
+    "enableTranslationCache": "缓存翻译结果",
+    "enableTranslationCacheDesc": "对相同原文直接复用缓存结果，不再调用模型。",
     "localEndpoint": "本地模型端口",
     "modelName": "模型名称",
     "selectModel": "选择模型",
@@ -82,6 +85,10 @@
   },
   "highlight": {
     "copyNote": "复制批注"
+  },
+  "contextMenu": {
+    "translate": "翻译",
+    "copy": "复制"
   },
   "notice": {
     "nothingToCopy": "没有可复制的内容。",

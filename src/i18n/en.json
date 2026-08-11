@@ -11,6 +11,7 @@
     "pdfOnly": "PDF only",
     "autoTranslateSelection": "Auto-translate selected text",
     "enablePopup": "Enable reader selection popup",
+    "enableContextMenu": "Enable right-click translate",
     "translationService": "Translation service",
     "sourceLanguage": "Source language",
     "targetLanguage": "Target language",
@@ -32,6 +33,8 @@
     "cleanOutputDesc": "Automatically remove quotes, code blocks, translation tags and thinking residue.",
     "debugLogging": "Debug logging",
     "debugLoggingDesc": "Log request status and error summaries to the developer console.",
+    "enableTranslationCache": "Cache translation results",
+    "enableTranslationCacheDesc": "Reuse the cached result for identical source text instead of calling the model again.",
     "localEndpoint": "Local model endpoint",
     "modelName": "Model name",
     "selectModel": "Select model",
@@ -82,6 +85,10 @@
   },
   "highlight": {
     "copyNote": "Copy note"
+  },
+  "contextMenu": {
+    "translate": "Translate",
+    "copy": "Copy"
   },
   "notice": {
     "nothingToCopy": "Nothing to copy.",

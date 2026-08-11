@@ -16,6 +16,7 @@ import {
 	TranslatorService,
 	truncateHttpErrorBody,
 } from "../src/translatorService";
+import { TranslationCache, buildCacheKey, normalizeCacheText } from "../src/translationCache";
 import type { PdfOllamaTranslatorSettings, TranslationRequest } from "../src/types";
 
 Object.defineProperty(globalThis, "window", { value: globalThis, configurable: true });
@@ -30,6 +31,8 @@ const SETTINGS: PdfOllamaTranslatorSettings = {
 	cloudApiModel: "test-cloud-model",
 	autoTranslateSelection: true,
 	enablePopup: true,
+	enableContextMenu: true,
+	enableTranslationCache: true,
 	restrictSourceLanguages: false,
 	sourceLanguage: "auto",
 	targetLanguage: "zh-Hans",
@@ -248,6 +251,109 @@ test("sidebar bottom controls share one guarded left-aligned action column", asy
 	assert.doesNotMatch(styles, /\.pdf-ollama-translator-sidebar__copy-row\s*{[\s\S]*?repeat\(3, minmax\(0, 1fr\)\)/);
 });
 
+test("pdf context menu stays non-destructive and PDF++ compatible", async () => {
+	const [contextMenu, main] = await Promise.all([
+		readProjectFile("src/pdfContextMenu.ts"),
+		readProjectFile("src/main.ts"),
+	]);
+
+	const section = (from: string, to: string): string => {
+		const start = contextMenu.indexOf(from);
+		const end = contextMenu.indexOf(to);
+		assert.ok(start >= 0 && end > start, `could not slice ${from}..${to}`);
+		return contextMenu.slice(start, end);
+	};
+
+	// Assertions about forbidden calls must ignore prose, or a comment explaining
+	// why we avoid an API would fail the very check that guards it.
+	const stripComments = (source: string): string =>
+		source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+	const contextMenuCode = stripComments(contextMenu);
+
+	// The old implementation intercepted contextmenu on the parent document in
+	// the capture phase and stopped propagation, which erased every other
+	// plugin's menu items.
+	assert.doesNotMatch(main, /registerDomEvent\(\s*activeDocument\s*,\s*"contextmenu"/);
+	assert.doesNotMatch(main, /handleContextMenu/);
+	assert.doesNotMatch(contextMenuCode, /stopPropagation|stopImmediatePropagation/);
+	assert.doesNotMatch(contextMenuCode, /activeDocument/);
+
+	// Markdown keeps using the official event; PDF goes through `pdf-menu`.
+	assert.match(main, /this\.app\.workspace\.on\("editor-menu"/);
+	assert.match(contextMenu, /PDF_MENU_EVENT = "pdf-menu"/);
+	assert.match(contextMenu, /PDF_PLUS_ID = "pdf-plus"/);
+
+	// PDF++ detection must consult both the enabled set and the live instance;
+	// a stubbed-out check would silently make us fight PDF++ for the menu.
+	const detection = section("isPdfPlusEnabled(): boolean", "private scheduleRescan");
+	assert.match(detection, /enabledPlugins\?\.has\(PDF_PLUS_ID\)/);
+	assert.match(detection, /plugins\?\.\[PDF_PLUS_ID\]/);
+
+	// When PDF++ owns the menu we must not install a competing interceptor.
+	const rescan = section("private rescanPdfTargets", "private collectPdfTargets");
+	assert.match(rescan, /this\.isPdfPlusEnabled\(\)/);
+	assert.match(rescan, /this\.detachAll\(\)/);
+
+	// Obsidian's built-in PDF handler calls stopPropagation(), so a bubble-phase
+	// listener would never fire and the fallback menu would never appear. Both
+	// registration and removal must pass the capture flag.
+	assert.match(contextMenu, /addEventListener\("contextmenu", handler, true\)/);
+	assert.match(contextMenu, /removeEventListener\("contextmenu", entry\.handler, true\)/);
+
+	// The fallback must cover PDF views that are not inside an iframe, otherwise
+	// builds that render PDF.js straight into the leaf get no menu at all.
+	const collect = section("private collectPdfTargets", "private isPdfLeaf");
+	assert.match(collect, /querySelectorAll\("iframe"\)/);
+	assert.match(collect, /targets\.push\(container\)/);
+
+	// Deciding a leaf is a PDF must not rely on generic classes: matching `.page`
+	// in a Markdown view would attach the interceptor there and suppress its
+	// native menu — the exact bug this file exists to prevent.
+	assert.doesNotMatch(section("const PDF_VIEWER_MARKERS", "const PDF_PAGE_MARKERS"), /\.page|\.textLayer/);
+	assert.match(section("private isPdfLeaf", "private readFrameDocument"), /viewType === "pdf"/);
+
+	// The fallback interceptor must only broadcast: it adds no items itself (so
+	// our own broadcast cannot duplicate them), backs off when another handler
+	// already claimed the right-click, and re-checks PDF++ because enabling a
+	// plugin emits no layout event.
+	const interceptor = section("private handlePdfContextMenu", "private broadcastPdfMenu");
+	assert.doesNotMatch(interceptor, /menu\.addItem\(/);
+	assert.match(interceptor, /evt\.defaultPrevented/);
+	assert.match(interceptor, /this\.isPdfPlusEnabled\(\)/);
+	assert.match(interceptor, /this\.broadcastPdfMenu\(menu/);
+	// Suppress the built-in menu with preventDefault only, and only once we
+	// actually have items to show.
+	assert.match(interceptor, /if \(!added\)[\s\S]*?evt\.preventDefault\(\)/);
+	// This plugin's own highlight UI sits inside the page layer; right-clicking it
+	// must keep the native menu so copy/paste still works in the note editor.
+	assert.match(interceptor, /HIGHLIGHT_UI_MARKERS/);
+	assert.match(contextMenu, /HIGHLIGHT_UI_MARKERS =[\s\S]*?highlight-note-editor/);
+
+	// Captured geometry describing different text must not be reused, or a later
+	// highlight would land on the wrong words.
+	const capturedCode = stripComments(
+		main.slice(main.indexOf("async translateCapturedSelection"), main.indexOf("private getViewportCenterRect")),
+	);
+	assert.ok(capturedCode.length > 0, "could not slice translateCapturedSelection");
+	assert.doesNotMatch(capturedCode, /\.\.\.\(captured/);
+	assert.doesNotMatch(capturedCode, /overlayRects|pageHint/);
+
+	// Items come solely from the `pdf-menu` listener, registered exactly once.
+	assert.equal((contextMenu.match(/menu\.addItem\(/g) ?? []).length, 2);
+	assert.match(section("onPdfMenu(menu: Menu", "private scheduleRescan"), /menu\.addItem\(/);
+	assert.equal((contextMenu.match(/workspace\.on\(\s*PDF_MENU_EVENT/g) ?? []).length, 1);
+	assert.match(contextMenu, /private menuEventRef: EventRef \| null/);
+
+	// A third-party listener that throws must not cost us the menu, and item
+	// counting must not depend on Menu's private `items` field.
+	const broadcast = section("private broadcastPdfMenu", "private pruneDetachedTargets");
+	assert.match(broadcast, /catch \(error\)/);
+	assert.doesNotMatch(contextMenu, /\bmenu\.items\b|\{ items\?/);
+
+	// Realm hazard: the PDF iframe is a separate JS realm.
+	assert.doesNotMatch(contextMenu, /instanceof (?:Document|Node|Element)/);
+});
+
 test("build metadata describes one release version", async () => {
 	const [packageJson, manifest, packageLock, versions] = await Promise.all([
 		readProjectJson("package.json"),
@@ -260,6 +366,69 @@ test("build metadata describes one release version", async () => {
 	assert.equal(packageLock.version, packageJson.version);
 	assert.equal(packageLock.packages[""].version, packageJson.version);
 	assert.equal(versions[packageJson.version], manifest.minAppVersion);
+});
+
+test("translation cache keys contain only language pair and source text", () => {
+	assert.equal(buildCacheKey("en", "zh-Hans", "hello"), "en||zh-Hans||hello");
+	assert.equal(buildCacheKey("en", "zh-Hans", "hello"), buildCacheKey("en", "zh-Hans", "hello"));
+	assert.notEqual(buildCacheKey("en", "zh-Hans", "hello"), buildCacheKey("en", "zh-Hans", "hello "));
+	assert.notEqual(buildCacheKey("en", "zh-Hans", "hello"), buildCacheKey("en", "de", "hello"));
+});
+
+test("cache text normalization strips only edge whitespace and punctuation", () => {
+	// Edge whitespace and punctuation are removed; the middle is untouched.
+	assert.equal(normalizeCacheText("  Hello, world.  "), "Hello, world");
+	assert.equal(normalizeCacheText("…hello…"), "hello");
+	assert.equal(normalizeCacheText("　你好，世界。　"), "你好，世界");
+	assert.equal(normalizeCacheText("Hello, world"), "Hello, world");
+	assert.equal(normalizeCacheText(""), "");
+	assert.equal(normalizeCacheText(",,,"), "");
+
+	// The same sentence with different edge punctuation/whitespace shares one key.
+	assert.equal(
+		buildCacheKey("en", "zh-Hans", normalizeCacheText(" Hello, ")),
+		buildCacheKey("en", "zh-Hans", normalizeCacheText("Hello.")),
+	);
+});
+
+test("translation cache misses before load, hits after set, and persists to disk", async () => {
+	const adapter = new MemoryCacheAdapter();
+	const cache = new TranslationCache(adapter, "cache.json");
+
+	// Not loaded yet: safe miss, never throws.
+	assert.equal(cache.get("en||zh-Hans||hello"), null);
+
+	await cache.load();
+	assert.equal(cache.get("en||zh-Hans||hello"), null);
+
+	cache.set("en||zh-Hans||hello", { translatedText: "你好", model: "test-model", timestamp: 1, version: 1 });
+	assert.equal(cache.get("en||zh-Hans||hello")?.translatedText, "你好");
+
+	await cache.flush();
+	const parsed = JSON.parse(adapter.files.get("cache.json")!) as Record<string, { translatedText: string; model: string }>;
+	assert.equal(parsed["en||zh-Hans||hello"].translatedText, "你好");
+	assert.equal(parsed["en||zh-Hans||hello"].model, "test-model");
+});
+
+test("translation cache tolerates corrupted files and serializes concurrent writes", async () => {
+	// Corrupted file: load must not throw, cache starts empty.
+	const badAdapter = new MemoryCacheAdapter();
+	badAdapter.files.set("cache.json", "not-json{{{");
+	const badCache = new TranslationCache(badAdapter, "cache.json");
+	await badCache.load();
+	assert.equal(badCache.get("en||zh-Hans||hello"), null);
+
+	// Concurrent writes: all entries present, last write wins per key.
+	const adapter = new MemoryCacheAdapter();
+	const cache = new TranslationCache(adapter, "cache.json");
+	await cache.load();
+	cache.set("en||zh-Hans||a", { translatedText: "A", model: "m", timestamp: 1, version: 1 });
+	cache.set("en||zh-Hans||b", { translatedText: "B", model: "m", timestamp: 1, version: 1 });
+	cache.set("en||zh-Hans||a", { translatedText: "A2", model: "m", timestamp: 1, version: 1 });
+	await cache.flush();
+	const parsed = JSON.parse(adapter.files.get("cache.json")!) as Record<string, { translatedText: string }>;
+	assert.equal(parsed["en||zh-Hans||a"].translatedText, "A2");
+	assert.equal(parsed["en||zh-Hans||b"].translatedText, "B");
 });
 
 class MemoryVault {
@@ -283,6 +452,18 @@ class MemoryVault {
 	async annotationCount(): Promise<number> {
 		const pdf = await PDFDocument.load(this.bytes);
 		return pdf.getPage(0).node.lookupMaybe(PDFName.of("Annots"), PDFArray)?.size() ?? 0;
+	}
+}
+
+class MemoryCacheAdapter {
+	files = new Map<string, string>();
+
+	async read(path: string): Promise<string | null> {
+		return this.files.get(path) ?? null;
+	}
+
+	async write(path: string, data: string): Promise<void> {
+		this.files.set(path, data);
 	}
 }
 

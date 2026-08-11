@@ -65,6 +65,16 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 					}),
 			);
 
+		new Setting(containerEl)
+			.setName(t("settings.enableContextMenu"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableContextMenu)
+					.onChange(async (value) => {
+						await this.plugin.updateSettings({ enableContextMenu: value });
+					}),
+			);
+
 		this.addSection(t("settings.section.service"));
 		new Setting(containerEl)
 			.setName(t("settings.translationService"))
@@ -252,6 +262,17 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.cleanModelOutput)
 					.onChange(async (value) => {
 						await this.plugin.updateSettings({ cleanModelOutput: value });
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName(t("settings.enableTranslationCache"))
+			.setDesc(t("settings.enableTranslationCacheDesc"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableTranslationCache)
+					.onChange(async (value) => {
+						await this.plugin.updateSettings({ enableTranslationCache: value });
 					}),
 			);
 
