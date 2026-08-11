@@ -251,6 +251,88 @@ test("sidebar bottom controls share one guarded left-aligned action column", asy
 	assert.doesNotMatch(styles, /\.pdf-ollama-translator-sidebar__copy-row\s*{[\s\S]*?repeat\(3, minmax\(0, 1fr\)\)/);
 });
 
+test("pdf context menu stays non-destructive and PDF++ compatible", async () => {
+	const [contextMenu, main] = await Promise.all([
+		readProjectFile("src/pdfContextMenu.ts"),
+		readProjectFile("src/main.ts"),
+	]);
+
+	const section = (from: string, to: string): string => {
+		const start = contextMenu.indexOf(from);
+		const end = contextMenu.indexOf(to);
+		assert.ok(start >= 0 && end > start, `could not slice ${from}..${to}`);
+		return contextMenu.slice(start, end);
+	};
+
+	// Assertions about forbidden calls must ignore prose, or a comment explaining
+	// why we avoid an API would fail the very check that guards it.
+	const contextMenuCode = contextMenu.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+
+	// The old implementation intercepted contextmenu on the parent document in
+	// the capture phase and stopped propagation, which erased every other
+	// plugin's menu items.
+	assert.doesNotMatch(main, /registerDomEvent\(\s*activeDocument\s*,\s*"contextmenu"/);
+	assert.doesNotMatch(main, /handleContextMenu/);
+	assert.doesNotMatch(contextMenuCode, /stopPropagation|stopImmediatePropagation/);
+	assert.doesNotMatch(contextMenuCode, /activeDocument/);
+
+	// Markdown keeps using the official event; PDF goes through `pdf-menu`.
+	assert.match(main, /this\.app\.workspace\.on\("editor-menu"/);
+	assert.match(contextMenu, /PDF_MENU_EVENT = "pdf-menu"/);
+	assert.match(contextMenu, /PDF_PLUS_ID = "pdf-plus"/);
+
+	// PDF++ detection must consult both the enabled set and the live instance;
+	// a stubbed-out check would silently make us fight PDF++ for the menu.
+	const detection = section("isPdfPlusEnabled(): boolean", "private scheduleRescan");
+	assert.match(detection, /enabledPlugins\?\.has\(PDF_PLUS_ID\)/);
+	assert.match(detection, /plugins\?\.\[PDF_PLUS_ID\]/);
+
+	// When PDF++ owns the menu we must not install a competing interceptor.
+	const rescan = section("private rescanPdfTargets", "private collectPdfTargets");
+	assert.match(rescan, /this\.isPdfPlusEnabled\(\)/);
+	assert.match(rescan, /this\.detachAll\(\)/);
+
+	// Obsidian's built-in PDF handler calls stopPropagation(), so a bubble-phase
+	// listener would never fire and the fallback menu would never appear. Both
+	// registration and removal must pass the capture flag.
+	assert.match(contextMenu, /addEventListener\("contextmenu", handler, true\)/);
+	assert.match(contextMenu, /removeEventListener\("contextmenu", entry\.handler, true\)/);
+
+	// The fallback must cover PDF views that are not inside an iframe, otherwise
+	// builds that render PDF.js straight into the leaf get no menu at all.
+	const collect = section("private collectPdfTargets", "private isPdfLeaf");
+	assert.match(collect, /querySelectorAll\("iframe"\)/);
+	assert.match(collect, /targets\.push\(container\)/);
+
+	// The fallback interceptor must only broadcast: it adds no items itself (so
+	// our own broadcast cannot duplicate them), backs off when another handler
+	// already claimed the right-click, and re-checks PDF++ because enabling a
+	// plugin emits no layout event.
+	const interceptor = section("private handlePdfContextMenu", "private broadcastPdfMenu");
+	assert.doesNotMatch(interceptor, /menu\.addItem\(/);
+	assert.match(interceptor, /evt\.defaultPrevented/);
+	assert.match(interceptor, /this\.isPdfPlusEnabled\(\)/);
+	assert.match(interceptor, /this\.broadcastPdfMenu\(menu/);
+	// Suppress the built-in menu with preventDefault only, and only once we
+	// actually have items to show.
+	assert.match(interceptor, /if \(!added\)[\s\S]*?evt\.preventDefault\(\)/);
+
+	// Items come solely from the `pdf-menu` listener, registered exactly once.
+	assert.equal((contextMenu.match(/menu\.addItem\(/g) ?? []).length, 2);
+	assert.match(section("onPdfMenu(menu: Menu", "private scheduleRescan"), /menu\.addItem\(/);
+	assert.equal((contextMenu.match(/workspace\.on\(\s*PDF_MENU_EVENT/g) ?? []).length, 1);
+	assert.match(contextMenu, /private menuEventRef: EventRef \| null/);
+
+	// A third-party listener that throws must not cost us the menu, and item
+	// counting must not depend on Menu's private `items` field.
+	const broadcast = section("private broadcastPdfMenu", "private pruneDetachedTargets");
+	assert.match(broadcast, /catch \(error\)/);
+	assert.doesNotMatch(contextMenu, /\bmenu\.items\b|\{ items\?/);
+
+	// Realm hazard: the PDF iframe is a separate JS realm.
+	assert.doesNotMatch(contextMenu, /instanceof (?:Document|Node|Element)/);
+});
+
 test("build metadata describes one release version", async () => {
 	const [packageJson, manifest, packageLock, versions] = await Promise.all([
 		readProjectJson("package.json"),

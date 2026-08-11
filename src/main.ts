@@ -1,7 +1,8 @@
-import { Menu, Notice, Plugin, WorkspaceLeaf } from "obsidian";
+import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { getProviderLabel, TranslatorService } from "./translatorService";
 import { DEFAULT_TRANSLATION_PROMPT } from "./translatorService";
 import { PdfSelectionReader } from "./pdfSelection";
+import { PdfContextMenuService } from "./pdfContextMenu";
 import { PdfOllamaTranslatorSettingTab } from "./settings";
 import { PDF_OLLAMA_TRANSLATOR_VIEW_TYPE, PdfOllamaTranslatorSidebarView } from "./sidebarView";
 import { TranslationPopup } from "./translationPopup";
@@ -65,6 +66,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	settings: PdfOllamaTranslatorSettings;
 	private translator: TranslatorService;
 	private selectionReader: PdfSelectionReader;
+	private contextMenuService: PdfContextMenuService;
 	private highlightService: PdfHighlightService;
 	private popup: TranslationPopup;
 	private cache: TranslationCache | undefined;
@@ -92,6 +94,13 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			(secretId) => this.app.secretStorage.getSecret(secretId),
 		);
 		this.selectionReader = new PdfSelectionReader(this.app, () => this.settings, this.debug);
+		this.contextMenuService = new PdfContextMenuService({
+			app: this.app,
+			getSettings: () => this.settings,
+			getSelection: () => this.selectionReader.readSelection(),
+			onTranslate: (text, selection) => void this.translateCapturedSelection(text, selection),
+			debug: this.debug,
+		});
 		this.highlightService = new PdfHighlightService(
 			this.app,
 			this.debug,
@@ -126,7 +135,8 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			callback: () => void this.activateSidebarView(),
 		});
 		this.registerSelectionEvents();
-		this.registerContextMenu();
+		this.registerEditorMenu();
+		this.contextMenuService.onload();
 		this.registerWorkspaceEvents();
 	}
 
@@ -134,6 +144,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 		this.cancelActiveRequest();
 		window.clearTimeout(this.selectionTimer);
 		void this.cache?.flush().catch(() => undefined);
+		this.contextMenuService?.destroy();
 		this.highlightService?.flushAllPending();
 		this.highlightService?.destroy();
 		this.popup?.destroy();
@@ -242,6 +253,36 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			return;
 		}
 		await this.translateSelection(selection, false);
+	}
+
+	/**
+	 * Translates text captured when a context menu was built.
+	 *
+	 * The menu takes focus when the user clicks an item, which can collapse the
+	 * selection, so the text is passed in rather than re-read here. `selection`
+	 * carries the geometry captured at the same moment; it is re-read as a
+	 * fallback and finally synthesised, because the popup needs a rect to anchor
+	 * to and the caret may be gone by now.
+	 */
+	async translateCapturedSelection(text: string, selection: PdfTextSelection | null): Promise<void> {
+		const sourceText = text.trim();
+		if (!sourceText) {
+			new Notice(t("notice.selectTextFirst"));
+			return;
+		}
+
+		const captured = selection ?? this.selectionReader.readSelection() ?? this.lastDocumentSelection;
+		const anchor: PdfTextSelection =
+			captured && captured.text.trim() === sourceText
+				? captured
+				: { ...(captured ?? {}), text: sourceText, rect: captured?.rect ?? this.getViewportCenterRect() };
+
+		await this.translateSelection(anchor, false);
+	}
+
+	/** Anchor of last resort when a selection rect is no longer available. */
+	private getViewportCenterRect(): DOMRect {
+		return new DOMRect(window.innerWidth / 2, window.innerHeight / 3, 0, 0);
 	}
 
 	async translateSidebarText(text: string, rect: DOMRect): Promise<void> {
@@ -357,7 +398,14 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 		);
 	}
 
-	private registerContextMenu(): void {
+	/**
+	 * Markdown editors get their item through Obsidian's official `editor-menu`
+	 * event. PDF views are handled by {@link PdfContextMenuService}, which hooks
+	 * the `pdf-menu` extension point instead of intercepting right-clicks on the
+	 * parent document — intercepting there would swallow every other plugin's
+	 * context menu items.
+	 */
+	private registerEditorMenu(): void {
 		this.registerEvent(
 			this.app.workspace.on("editor-menu", (menu, editor) => {
 				if (!this.settings.enableContextMenu) {
@@ -371,55 +419,12 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 					item
 						.setTitle(t("contextMenu.translate"))
 						.setIcon("languages")
-						.onClick(() => void this.translateActiveSelectionFromSidebar());
+						// Capture the text now: clicking the item moves focus and
+						// can collapse the editor selection.
+						.onClick(() => void this.translateCapturedSelection(text, this.selectionReader.readSelection()));
 				});
 			}),
 		);
-		this.registerDomEvent(activeDocument, "contextmenu", (event) => this.handleContextMenu(event), true);
-	}
-
-	private handleContextMenu(event: MouseEvent): void {
-		if (!this.settings.enableContextMenu) {
-			return;
-		}
-		if (isHighlightNoteTarget(event.target)) {
-			return;
-		}
-		// Markdown views are handled by `editor-menu` above; only intercept right-clicks
-		// that actually land inside the active PDF container (not the sidebar, popup, etc.).
-		const pdfContainer = this.selectionReader.getActivePdfContainerEl();
-		if (!pdfContainer) {
-			return;
-		}
-		if (!(event.target instanceof Node) || !pdfContainer.contains(event.target)) {
-			return;
-		}
-
-		const selection = this.selectionReader.readSelection();
-		if (!selection) {
-			return;
-		}
-
-		event.preventDefault();
-		event.stopPropagation();
-
-		const menu = new Menu();
-		menu.addItem((item) => {
-			item
-				.setTitle(t("contextMenu.translate"))
-				.setIcon("languages")
-				.onClick(() => void this.translateSelection(selection, false));
-		});
-		menu.addItem((item) => {
-			item
-				.setTitle(t("contextMenu.copy"))
-				.setIcon("copy")
-				.onClick(async () => {
-					await navigator.clipboard.writeText(selection.text);
-					new Notice(t("notice.copied"));
-				});
-		});
-		menu.showAtMouseEvent(event);
 	}
 
 	private handleDocumentPointerDown(event: MouseEvent): void {

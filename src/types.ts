@@ -65,6 +65,18 @@ export interface PdfTextSelection {
 	overlayRects?: PdfSelectionOverlayRect[];
 }
 
+/**
+ * Payload carried by the `pdf-menu` workspace event. `pdf-menu` is not part of
+ * Obsidian's public API — PDF++ introduced it as an extension point so other
+ * plugins can contribute items to the PDF context menu. Every field is optional
+ * because broadcasters differ in how much context they can supply.
+ */
+export interface PdfMenuPayload {
+	pageNumber?: number;
+	selection?: string;
+	annot?: unknown;
+}
+
 export interface PdfSelectionOverlayRect {
 	pageEl: HTMLElement;
 	pageNumber?: number;

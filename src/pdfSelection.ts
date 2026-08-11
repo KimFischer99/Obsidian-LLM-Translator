@@ -101,10 +101,6 @@ export class PdfSelectionReader {
 		return selection.text.length > this.getSettings().maxSelectionChars;
 	}
 
-	getActivePdfContainerEl(): HTMLElement | null {
-		return this.getActivePdfContainer()?.container ?? null;
-	}
-
 	private getActivePdfContainer(): ActiveSelectionContainer | null {
 		const activeLeaf = this.app.workspace.activeLeaf;
 		const view = activeLeaf?.view as PdfLikeView | undefined;
