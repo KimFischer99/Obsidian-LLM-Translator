@@ -38,7 +38,7 @@ export type HighlightColorId = "yellow" | "red" | "blue" | "green" | "purple";
 
 export type TranslationProviderId = "local-llm" | "cloud-api" | "google" | "bing";
 
-export type TranslationLanguage = "auto" | "en" | "de" | "fr" | "ja" | "zh-Hans";
+export type TranslationLanguage = "auto" | "en" | "de" | "fr" | "tr" | "ja" | "zh-Hans";
 
 export interface TranslationRequest {
 	text: string;

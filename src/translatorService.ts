@@ -82,13 +82,14 @@ export class TranslationTimeoutError extends Error {
 }
 
 export const DEFAULT_TRANSLATION_PROMPT =
-	"Translate English, German, French, Japanese, or Simplified Chinese into the selected target language. Preserve terminology, numbers, formulas, citations, and paragraph breaks. Output only the translation.";
+	"Translate English, German, French, Turkish, Japanese, or Simplified Chinese into the selected target language. Preserve terminology, numbers, formulas, citations, and paragraph breaks. Output only the translation.";
 
 const LANGUAGE_NAMES: Record<TranslationLanguage, string> = {
 	auto: "auto-detected language",
 	en: "English",
 	de: "German",
 	fr: "French",
+	tr: "Turkish",
 	ja: "Japanese",
 	"zh-Hans": "Simplified Chinese",
 };
@@ -342,7 +343,7 @@ export class TranslatorService {
 					text: "Hello",
 					sourceLanguage: "en",
 					targetLanguage: "zh-Hans",
-					allowedSourceLanguages: ["en", "de", "fr", "ja", "zh-Hans"],
+					allowedSourceLanguages: ["en", "de", "fr", "tr", "ja", "zh-Hans"],
 				});
 				return { ok: true, message: t("error.connectionSuccess", { provider: getProviderLabel(provider), result: result.translatedText }) };
 			} catch (error) {
@@ -679,7 +680,7 @@ export function buildOllamaOptions(settings: PdfOllamaTranslatorSettings): Recor
 export function cleanModelOutput(value: string): string {
 	return value
 		.replace(/<think>[\s\S]*?<\/think>/gi, "")
-		.replace(/^\s*(translation|translated text|译文|翻译)\s*[:：]\s*/i, "")
+		.replace(/^\s*(translation|translated text|çeviri|tercüme|译文|翻译)\s*[:：]\s*/i, "")
 		.replace(/^```(?:text|markdown)?\s*/i, "")
 		.replace(/```\s*$/i, "")
 		.trim()

@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/platform-Obsidian%20Desktop-purple" alt="Platform">
   <img src="https://img.shields.io/github/v/release/KimFischer99/Obsidian-LLM-Translator" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
-  <img src="https://img.shields.io/badge/language-Chinese%20%7C%20English-green" alt="Languages">
+  <img src="https://img.shields.io/badge/language-Chinese%20%7C%20English%20%7C%20Turkish-green" alt="Languages">
 </p>
 
 <p align="center">
@@ -50,11 +50,12 @@
 - 侧边栏翻译面板，支持手动输入或使用当前选区
 - 复制译文 / 重试翻译 / 一键切换语言
 - 自定义翻译 Prompt，满足专业需求
+- 支持英语、德语、法语、土耳其语、日语和简体中文互译
 
 ### 🌐 多语言界面
 
 - 自动跟随 Obsidian 系统语言
-- 支持简体中文 / English 界面
+- 支持简体中文 / English / Türkçe 界面
 
 ### ✏️ 原生 PDF 高亮注释
 
