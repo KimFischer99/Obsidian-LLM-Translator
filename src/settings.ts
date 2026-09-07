@@ -10,6 +10,7 @@ const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; label: string
 	{ value: "en", label: "English" },
 	{ value: "de", label: "Deutsch" },
 	{ value: "fr", label: "Français" },
+	{ value: "tr", label: "Türkçe" },
 	{ value: "ja", label: "日本語" },
 	{ value: "zh-Hans", label: "简体中文" },
 ];
@@ -18,6 +19,7 @@ const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto
 	{ value: "en", label: "English" },
 	{ value: "de", label: "Deutsch" },
 	{ value: "fr", label: "Français" },
+	{ value: "tr", label: "Türkçe" },
 	{ value: "ja", label: "日本語" },
 	{ value: "zh-Hans", label: "简体中文" },
 ];

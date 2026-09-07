@@ -30,6 +30,7 @@ const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; label: string
 	{ value: "en", label: "EN" },
 	{ value: "de", label: "DE" },
 	{ value: "fr", label: "FR" },
+	{ value: "tr", label: "TR" },
 	{ value: "ja", label: "JA" },
 	{ value: "zh-Hans", label: "ZH" },
 ];
@@ -38,6 +39,7 @@ const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto
 	{ value: "en", label: "EN" },
 	{ value: "de", label: "DE" },
 	{ value: "fr", label: "FR" },
+	{ value: "tr", label: "TR" },
 	{ value: "ja", label: "JA" },
 	{ value: "zh-Hans", label: "ZH" },
 ];

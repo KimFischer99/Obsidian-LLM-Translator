@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/platform-Obsidian%20Desktop-purple" alt="Platform">
   <img src="https://img.shields.io/github/v/release/KimFischer99/Obsidian-LLM-Translator" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
-  <img src="https://img.shields.io/badge/language-Chinese%20%7C%20English-green" alt="Languages">
+  <img src="https://img.shields.io/badge/language-Chinese%20%7C%20English%20%7C%20Turkish-green" alt="Languages">
 </p>
 
 <p align="center">
@@ -50,11 +50,12 @@
 - Sidebar translation panel for manual input or the current selection
 - Copy / Retry / One-click language switch
 - Custom translation prompt for professional needs
+- English, German, French, Turkish, Japanese, and Simplified Chinese translation
 
 ### 🌐 Multi-language Interface
 
 - Automatically follows Obsidian system language
-- Supports Chinese / English interface
+- Supports Chinese / English / Turkish interface
 
 ### ✏️ Native PDF Highlight Annotations
 

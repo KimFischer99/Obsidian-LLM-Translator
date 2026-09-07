@@ -333,7 +333,7 @@ function normalizeSelectionText(value: string): string {
 		.replace(/\r\n?/g, "\n")
 		.replace(/\u00a0/g, " ")
 		.replace(/[ \t]+/g, " ")
-		.replace(/([A-Za-zÀ-ÖØ-öø-ÿ])-\n(?=[A-Za-zÀ-ÖØ-öø-ÿ])/g, "$1")
+		.replace(/([A-Za-zÀ-ÖØ-öø-ÿĞğİıŞş])-\n(?=[A-Za-zÀ-ÖØ-öø-ÿĞğİıŞş])/g, "$1")
 		.replace(/([\u3040-\u30ff\u3400-\u9fff])\n(?=[\u3040-\u30ff\u3400-\u9fff])/g, "$1")
 		.replace(/\n{2,}/g, "\n\n")
 		.trim();
@@ -359,9 +359,9 @@ function isLikelySupportedSourceText(value: string, sourceLanguage: PdfOllamaTra
 		return /[\u3040-\u30ff\u3400-\u9fff]/.test(value);
 	}
 
-	if (sourceLanguage === "en" || sourceLanguage === "de" || sourceLanguage === "fr") {
-		return /[A-Za-zÀ-ÖØ-öø-ÿ]/.test(value);
+	if (sourceLanguage === "en" || sourceLanguage === "de" || sourceLanguage === "fr" || sourceLanguage === "tr") {
+		return /[A-Za-zÀ-ÖØ-öø-ÿĞğİıŞş]/.test(value);
 	}
 
-	return /[A-Za-zÀ-ÖØ-öø-ÿ\u3040-\u30ff\u3400-\u9fff]/.test(value);
+	return /[A-Za-zÀ-ÖØ-öø-ÿĞğİıŞş\u3040-\u30ff\u3400-\u9fff]/.test(value);
 }
