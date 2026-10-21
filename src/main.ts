@@ -1,6 +1,6 @@
 import { Modal, Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { getProviderLabel, TranslatorService } from "./translatorService";
-import { DEFAULT_TRANSLATION_PROMPT } from "./translatorService";
+import { DEFAULT_TRANSLATION_PROMPT, migrateTranslationPrompt } from "./translatorService";
 import { PdfSelectionReader } from "./pdfSelection";
 import { PdfOllamaTranslatorSettingTab } from "./settings";
 import { PDF_OLLAMA_TRANSLATOR_VIEW_TYPE, PdfOllamaTranslatorSidebarView } from "./sidebarView";
@@ -135,7 +135,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	onunload(): void {
 		this.cancelActiveRequest();
 		window.clearTimeout(this.selectionTimer);
-		this.highlightService?.flushAllPending();
+		void this.highlightService?.flushAllPending();
 		this.highlightService?.destroy();
 		this.popup?.destroy();
 	}
@@ -258,15 +258,24 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	}
 
 	private confirmCreateTranslationNote(path: string): Promise<boolean> {
+		return this.confirmAction({
+			title: t("note.confirmTitle"),
+			body: t("note.confirmBody", { path }),
+			confirmLabel: t("note.create"),
+			cancelLabel: t("note.cancel"),
+		});
+	}
+
+	private confirmAction(options: { title: string; body: string; confirmLabel: string; cancelLabel: string }): Promise<boolean> {
 		return new Promise((resolve) => {
 			const modal = new Modal(this.app);
 			modal.modalEl.addClass("pdf-ollama-translator-note-modal");
-			modal.setTitle(t("note.confirmTitle"));
-			modal.contentEl.createEl("p", { text: t("note.confirmBody", { path }) });
+			modal.setTitle(options.title);
+			modal.contentEl.createEl("p", { text: options.body });
 			const actions = modal.contentEl.createDiv({ cls: "pdf-ollama-translator-note-modal__actions" });
-			actions.createEl("button", { text: t("note.cancel") })
+			actions.createEl("button", { text: options.cancelLabel })
 				.onClickEvent(() => modal.close());
-			actions.createEl("button", { text: t("note.create"), cls: "mod-cta" })
+			actions.createEl("button", { text: options.confirmLabel, cls: "mod-cta" })
 				.onClickEvent(() => { resolve(true); modal.close(); });
 			modal.setCloseCallback(() => resolve(false));
 			modal.open();
@@ -346,7 +355,13 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			new Notice(t("notice.openPdfFirst"));
 			return;
 		}
-		if (!window.confirm(t("sidebar.clearAllHighlightsConfirm"))) {
+		const confirmed = await this.confirmAction({
+			title: t("sidebar.clearAllHighlights"),
+			body: t("sidebar.clearAllHighlightsConfirm"),
+			confirmLabel: t("sidebar.clearAllHighlights"),
+			cancelLabel: t("note.cancel"),
+		});
+		if (!confirmed) {
 			return;
 		}
 		try {
@@ -399,7 +414,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	}
 
 	private registerSelectionEvents(): void {
-		this.bindSelectionDocument(document);
+		this.bindSelectionDocument(activeDocument);
 		this.app.workspace.iterateAllLeaves((leaf) => this.bindSelectionDocument(leaf.view.containerEl.ownerDocument));
 		this.registerEvent(this.app.workspace.on("window-open", (_workspaceWindow, win) => this.bindSelectionDocument(win.document)));
 		this.registerEvent(this.app.workspace.on("window-close", (_workspaceWindow, win) => {
@@ -791,6 +806,8 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 				this.app.secretStorage.setSecret(cloudApiKeySecretId, legacyApiKey);
 			}
 		}
+		const storedPrompt = typeof safe.customPrompt === "string" ? safe.customPrompt : DEFAULT_SETTINGS.customPrompt;
+		const customPrompt = migrateTranslationPrompt(storedPrompt);
 		this.settings = {
 			...DEFAULT_SETTINGS,
 			...safe,
@@ -798,8 +815,9 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			cloudApiKeySecretId,
 			cloudApiModel: safe.cloudApiModel ?? DEFAULT_SETTINGS.cloudApiModel,
 			translationProvider: safe.translationProvider ?? DEFAULT_SETTINGS.translationProvider,
+			customPrompt,
 		};
-		if (Object.prototype.hasOwnProperty.call(loaded, "cloudApiKey")) {
+		if (Object.prototype.hasOwnProperty.call(loaded, "cloudApiKey") || customPrompt !== storedPrompt) {
 			await this.saveSettings();
 		}
 	}

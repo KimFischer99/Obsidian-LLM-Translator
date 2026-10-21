@@ -3,7 +3,7 @@
   <a href="README_CN.md"><img src="https://img.shields.io/badge/CN-简体中文-green" alt="简体中文"></a>
 </p>
 
-<h1 align="center">LLM Translator</h1>
+# LLM Translator
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Obsidian%20Desktop-purple" alt="Platform">

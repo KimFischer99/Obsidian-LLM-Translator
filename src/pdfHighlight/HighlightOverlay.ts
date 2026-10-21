@@ -223,15 +223,13 @@ export class HighlightOverlay {
 			const width = rect.widthRatio * pageRect.width;
 			const height = rect.heightRatio * pageRect.height;
 
-			const overlay = layer.ownerDocument.createElement("div");
-			overlay.className = OVERLAY_CLASS;
+			const overlay = layer.createDiv({ cls: OVERLAY_CLASS });
 			overlay.style.left = `${left}px`;
 			overlay.style.top = `${top}px`;
 			overlay.style.width = `${width}px`;
 			overlay.style.height = `${height}px`;
 			overlay.dataset.highlightId = id;
 			this.setOverlayInteractivity(overlay, group.note);
-			layer.appendChild(overlay);
 			elements.push(overlay);
 		}
 
@@ -347,9 +345,7 @@ export class HighlightOverlay {
 			return layer;
 		}
 
-		const next = host.ownerDocument.createElement("div");
-		next.className = LAYER_CLASS;
-		host.appendChild(next);
+		const next = host.createDiv({ cls: LAYER_CLASS });
 		this.layers.set(host, next);
 		return next;
 	}
@@ -453,13 +449,13 @@ export class HighlightOverlay {
 
 		const layerRect = layer.getBoundingClientRect();
 		const anchorRect = anchor.getBoundingClientRect();
-		const iconEl = anchor.ownerDocument.createElement("button");
-		iconEl.className = NOTE_ICON_CLASS;
-		iconEl.type = "button";
+		const iconEl = layer.createEl("button", {
+			cls: NOTE_ICON_CLASS,
+			attr: { type: "button", "aria-label": "Highlight note" },
+		});
 		iconEl.style.left = `${anchorRect.right - layerRect.left - 4}px`;
 		iconEl.style.top = `${anchorRect.top - layerRect.top - 12}px`;
 		iconEl.style.setProperty("--pdf-ollama-translator-highlight-color", group.color.css);
-		iconEl.setAttribute("aria-label", "Highlight note");
 		setIcon(iconEl, "message-square");
 		iconEl.onpointerdown = (event) => {
 			event.preventDefault();
@@ -470,7 +466,6 @@ export class HighlightOverlay {
 			event.preventDefault();
 			event.stopPropagation();
 		};
-		layer.appendChild(iconEl);
 		group.icon = iconEl;
 	}
 

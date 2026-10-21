@@ -3,7 +3,7 @@ import type PdfOllamaTranslatorPlugin from "./main";
 import { DEFAULT_TRANSLATION_PROMPT } from "./translatorService";
 import type { HighlightColorId, TranslationLanguage, TranslationProviderId } from "./types";
 import { t } from "./i18n";
-import { HIGHLIGHT_COLOR_ORDER, getHighlightColor } from "./pdfHighlight/colors";
+import { HIGHLIGHT_COLOR_ORDER } from "./pdfHighlight/colors";
 
 const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; labelKey: string }> = [
 	{ value: "auto", labelKey: "language.auto" },
@@ -69,6 +69,7 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName(t("settings.noteTarget"))
+			.setClass("pdf-ollama-translator-setting--centered")
 			.addText((text) => {
 				text.setPlaceholder(t("settings.noteTargetDefault"))
 					.setValue(this.plugin.settings.noteTargetPath);
@@ -76,9 +77,8 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 			})
 			.addButton((button) => button
 				.setButtonText(t("settings.chooseNote"))
-				.onClick(() => new NoteTargetPicker(this.app, async (file) => {
-					await this.plugin.updateSettings({ noteTargetPath: file.path });
-					this.display();
+				.onClick(() => new NoteTargetPicker(this.app, (file) => {
+					void this.applyNoteTarget(file);
 				}).open()))
 			.addButton((button) => button
 				.setButtonText(t("settings.noteTargetDefault"))
@@ -348,7 +348,7 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 			.addComponent((el) => new SecretComponent(this.app, el)
 				.setValue(this.plugin.settings.cloudApiKeySecretId)
 				.onChange(async (value) => {
-					await this.plugin.updateSettings({ cloudApiKeySecretId: value });
+					await this.plugin.updateSettings({ cloudApiKeySecretId: value ?? "" });
 				}));
 
 		new Setting(containerEl)
@@ -460,6 +460,11 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 
 	private addSection(title: string): void {
 		new Setting(this.containerEl).setName(title).setHeading();
+	}
+
+	private async applyNoteTarget(file: TFile): Promise<void> {
+		await this.plugin.updateSettings({ noteTargetPath: file.path });
+		this.display();
 	}
 }
 

@@ -1,7 +1,7 @@
 {
 	"id": "llm-translator",
 	"name": "LLM Translator",
-	"version": "0.5.1",
+	"version": "0.5.2",
 	"minAppVersion": "1.11.4",
 	"description": "Translate selected text in the native PDF reader with local and cloud translation services.",
 	"author": "Kim Fischer",

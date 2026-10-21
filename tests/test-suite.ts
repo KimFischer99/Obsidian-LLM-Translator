@@ -13,6 +13,8 @@ import { appendTranslationNote } from "../src/noteExport";
 import PdfOllamaTranslatorPlugin from "../src/main";
 import {
 	cleanModelOutput,
+	DEFAULT_TRANSLATION_PROMPT,
+	migrateTranslationPrompt,
 	normalizeCloudApiBaseUrl,
 	TranslationCancelledError,
 	TranslationTimeoutError,
@@ -467,11 +469,34 @@ test("build metadata describes one release version", async () => {
 		readProjectJson("package-lock.json"),
 		readProjectJson("versions.json"),
 	]);
-	assert.equal(packageJson.version, "0.5.1");
+	assert.equal(packageJson.version, "0.5.2");
 	assert.equal(manifest.version, packageJson.version);
 	assert.equal(packageLock.version, packageJson.version);
 	assert.equal(packageLock.packages[""].version, packageJson.version);
 	assert.equal(versions[packageJson.version], manifest.minAppVersion);
+});
+
+test("stored prompt follows the default prompt after the Turkish update", async () => {
+	const legacyPrompt = "Translate English, German, French, Japanese, or Simplified Chinese into the selected target language."
+		+ " Preserve terminology, numbers, formulas, citations, and paragraph breaks. Output only the translation.";
+	const main = await readProjectFile("src/main.ts");
+
+	assert.match(DEFAULT_TRANSLATION_PROMPT, /English, German, French, Turkish, Japanese/);
+	assert.equal(migrateTranslationPrompt(legacyPrompt), DEFAULT_TRANSLATION_PROMPT);
+	assert.equal(migrateTranslationPrompt(`  ${legacyPrompt.replace(/ /g, "   ")}\n`), DEFAULT_TRANSLATION_PROMPT);
+	assert.equal(migrateTranslationPrompt("Keep it short."), "Keep it short.");
+	assert.equal(migrateTranslationPrompt("  "), "  ");
+	assert.match(main, /const customPrompt = migrateTranslationPrompt\(storedPrompt\)/);
+});
+
+test("note target row centers its label against the controls", async () => {
+	const [settings, styles] = await Promise.all([
+		readProjectFile("src/settings.ts"),
+		readProjectFile("styles.css"),
+	]);
+
+	assert.match(settings, /\.setName\(t\("settings\.noteTarget"\)\)\s*\.setClass\("pdf-ollama-translator-setting--centered"\)/);
+	assert.match(styles, /\.pdf-ollama-translator-settings \.setting-item\.pdf-ollama-translator-setting--centered\s*{[^}]*align-items: center/);
 });
 
 class MemoryVault {

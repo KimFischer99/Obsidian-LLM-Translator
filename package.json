@@ -1,6 +1,6 @@
 {
 	"name": "llm-translator",
-	"version": "0.5.1",
+	"version": "0.5.2",
 	"description": "Translate selected PDF text in Obsidian with local and cloud translation services.",
 	"main": "main.js",
 	"type": "module",
@@ -22,12 +22,12 @@
 	"devDependencies": {
 		"@types/node": "^16.11.6",
 		"esbuild": "0.25.5",
+		"obsidian": "latest",
 		"tslib": "2.4.0",
 		"typescript": "^5.8.3"
 	},
 	"dependencies": {
-		"obsidian": "latest",
 		"pdf-lib": "^1.17.1",
-		"pdfjs-dist": "^6.0.227"
+		"pdfjs-dist": "^6.2.108"
 	}
 }

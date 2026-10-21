@@ -33,7 +33,7 @@ interface NormalizedRect {
 interface PdfViewportLike {
 	width: number;
 	height: number;
-	convertToViewportRectangle(rect: number[]): number[];
+	convertToViewportPoint(x: number, y: number): number[];
 	convertToPdfPoint(x: number, y: number): number[];
 }
 
@@ -127,11 +127,7 @@ export class PdfTextLocator {
 				const overlays: PersistedPdfHighlight["overlayRects"] = [];
 				for (const quad of highlight.location.quads) {
 					const viewport = (await pdfDoc.getPage(quad.pageIndex + 1)).getViewport({ scale: 1 }) as PdfViewportLike;
-					const converted = viewport.convertToViewportRectangle(quad.rect);
-					const left = Math.min(converted[0], converted[2]);
-					const top = Math.min(converted[1], converted[3]);
-					const right = Math.max(converted[0], converted[2]);
-					const bottom = Math.max(converted[1], converted[3]);
+					const [left, top, right, bottom] = toViewportRect(viewport, quad.rect);
 					overlays.push({
 						pageNumber: quad.pageIndex + 1,
 						leftRatio: left / viewport.width,
@@ -193,7 +189,7 @@ export class PdfTextLocator {
 			end: start + selectedText.length,
 			matchType: "exact",
 			normalizedRects: [],
-			viewport: { width: 0, height: 0, convertToViewportRectangle: () => [], convertToPdfPoint: () => [] },
+			viewport: { width: 0, height: 0, convertToViewportPoint: () => [0, 0], convertToPdfPoint: () => [] },
 		}));
 		if (exactMatches.length > 0) {
 			return exactMatches;
@@ -207,7 +203,7 @@ export class PdfTextLocator {
 			end: compactMatch.end,
 			matchType: "compact",
 			normalizedRects: [],
-			viewport: { width: 0, height: 0, convertToViewportRectangle: () => [], convertToPdfPoint: () => [] },
+			viewport: { width: 0, height: 0, convertToViewportPoint: () => [0, 0], convertToPdfPoint: () => [] },
 		}));
 	}
 }
@@ -310,16 +306,23 @@ function unionRect(rects: NormalizedRect[]): NormalizedRect {
 	return { left, top, width: right - left, height: bottom - top };
 }
 
+function toViewportRect(viewport: PdfViewportLike, rect: number[]): [number, number, number, number] {
+	const first = viewport.convertToViewportPoint(rect[0], rect[1]);
+	const second = viewport.convertToViewportPoint(rect[2], rect[3]);
+	return [
+		Math.min(first[0], second[0]),
+		Math.min(first[1], second[1]),
+		Math.max(first[0], second[0]),
+		Math.max(first[1], second[1]),
+	];
+}
+
 function normalizeQuadRects(quads: PdfHighlightQuad[], viewport: PdfViewportLike): NormalizedRect[] {
 	if (viewport.width <= 0 || viewport.height <= 0) {
 		return [];
 	}
 	return quads.map((quad) => {
-		const converted = viewport.convertToViewportRectangle(quad.rect);
-		const left = Math.min(converted[0], converted[2]);
-		const top = Math.min(converted[1], converted[3]);
-		const right = Math.max(converted[0], converted[2]);
-		const bottom = Math.max(converted[1], converted[3]);
+		const [left, top, right, bottom] = toViewportRect(viewport, quad.rect);
 		return {
 			left: left / viewport.width,
 			top: top / viewport.height,

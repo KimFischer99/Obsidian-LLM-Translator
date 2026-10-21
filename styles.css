@@ -314,6 +314,12 @@
 	resize: vertical;
 }
 
+/* Obsidian 1.13+ aligns setting rows to flex-start, which leaves the label above a
+   taller control. Keep this row's label on the row's horizontal centerline. */
+.pdf-ollama-translator-settings .setting-item.pdf-ollama-translator-setting--centered {
+	align-items: center;
+}
+
 .pdf-ollama-translator-sidebar {
 	box-sizing: border-box;
 	display: flex;

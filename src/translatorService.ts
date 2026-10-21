@@ -85,6 +85,23 @@ export class TranslationTimeoutError extends Error {
 export const DEFAULT_TRANSLATION_PROMPT =
 	"Translate English, German, French, Turkish, Japanese, or Simplified Chinese into the selected target language. Preserve terminology, numbers, formulas, citations, and paragraph breaks. Output only the translation.";
 
+const LEGACY_TRANSLATION_PROMPTS = [
+	"Translate English, German, French, Japanese, or Simplified Chinese into the selected target language. Preserve terminology, numbers, formulas, citations, and paragraph breaks. Output only the translation.",
+];
+
+/**
+ * Saved settings keep their own copy of the prompt, so an updated default never
+ * reaches existing users. Only replace values that still equal a previous default,
+ * leaving any edited prompt untouched.
+ */
+export function migrateTranslationPrompt(prompt: string): string {
+	const normalized = prompt.replace(/\s+/g, " ").trim();
+	if (!normalized) {
+		return prompt;
+	}
+	return LEGACY_TRANSLATION_PROMPTS.includes(normalized) ? DEFAULT_TRANSLATION_PROMPT : prompt;
+}
+
 const LANGUAGE_NAMES: Record<TranslationLanguage, string> = {
 	auto: "auto-detected language",
 	en: "English",
@@ -509,14 +526,14 @@ export class TranslatorService {
 					throw: false,
 				});
 			} catch (error) {
-				finish(() => reject(error));
+				finish(() => reject(toError(error)));
 				return;
 			}
 
 			context?.transportSettlements.push(transport.then(() => undefined, () => undefined));
 			transport.then(
 				(response) => finish(() => resolve(response)),
-				(error) => finish(() => reject(error)),
+				(error) => finish(() => reject(toError(error))),
 			);
 		});
 	}
@@ -661,6 +678,14 @@ function isLoopbackHostname(hostname: string): boolean {
 		|| normalized === "[::1]"
 		|| normalized === "::1"
 		|| /^127(?:\.\d{1,3}){3}$/.test(normalized);
+}
+
+function toError(error: unknown): Error {
+	if (error instanceof Error) {
+		return error;
+	}
+	const message = typeof error === "string" ? error.trim() : "";
+	return new Error(message || t("error.unknownError"));
 }
 
 export function extractHttpErrorMessage(value: unknown): string | undefined {
