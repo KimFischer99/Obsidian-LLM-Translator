@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { PDFArray, PDFDocument, PDFName } from "pdf-lib";
 import { TFile, __setRequestUrl } from "obsidian";
 import { PdfAnnotationWriter, pdfQuadPointsEqual } from "../src/pdfHighlight/PdfAnnotationWriter";
+import { PdfHighlightService } from "../src/pdfHighlight/PdfHighlightService";
 import { getHighlightColor } from "../src/pdfHighlight/colors";
 import type { LocatedPdfHighlight, PdfHighlightQuad } from "../src/pdfHighlight/types";
 import { normalizeSelectionTextForPdf } from "../src/pdfHighlight/normalize";
@@ -226,6 +227,77 @@ test("PDF writes are serialized and preserve concurrent highlights", async () =>
 	assert.equal(await writer.getHighlightColor(location([...first.quads, ...second.quads])), null);
 });
 
+test("a smaller selection removes the full highlight without touching its neighbor", async () => {
+	const vault = await MemoryVault.create();
+	const writer = new PdfAnnotationWriter({ vault } as never);
+	const file = { path: "test.pdf" } as never;
+	const selected = location([quad(15, 12, 25, 18)], file);
+	const remaining = location([quad(10, 30, 30, 40)], file);
+	const first = location([quad(10, 10, 30, 20), ...remaining.quads], file);
+	const second = location([quad(40, 10, 60, 20)], file);
+	await writer.applyHighlight(first, getHighlightColor("yellow"), "old note");
+	await writer.applyHighlight(second, getHighlightColor("blue"), "second note");
+	const restored = await writer.readHighlights(file);
+	const firstGroup = restored.find((entry) => entry.location.quads.length === 2);
+	const secondGroup = restored.find((entry) => entry.location.quads.length === 1);
+	assert.ok(firstGroup);
+	assert.ok(secondGroup);
+
+	const service = Object.create(PdfHighlightService.prototype) as PdfHighlightService;
+	const state = service as unknown as Record<string, any>;
+	let located = selected;
+	state.locator = { locate: async () => located, restoreOverlayRects: async () => undefined };
+	state.writer = writer;
+	state.overlay = { remove: () => undefined, renderPersisted: () => undefined };
+	state.entries = new Map([
+		[firstGroup.id, { key: firstGroup.id, location: firstGroup.location, color: getHighlightColor("yellow"), note: "edited note", persisted: false }],
+		[secondGroup.id, { key: secondGroup.id, location: secondGroup.location, persisted: true }],
+	]);
+	state.pendingRemovals = new Map();
+	state.noteConflicts = new Set();
+	state.isFileOpen = () => true;
+	const selection = { file: first.file, text: "first" } as never;
+
+	assert.equal(await service.removeSelectionHighlight(selection), true);
+	assert.equal(await vault.annotationCount(), 1);
+	assert.equal(await writer.getHighlightColor(remaining), null);
+	assert.equal(await writer.getHighlightColor(second), "blue");
+	assert.equal(state.entries.size, 1);
+	assert.ok(state.entries.has(secondGroup.id));
+	located = location([quad(70, 10, 90, 20)], file);
+	assert.equal(await service.removeSelectionHighlight(selection), false);
+	assert.equal(await vault.annotationCount(), 1);
+});
+
+test("a larger selection removes every intersecting highlight", async () => {
+	const vault = await MemoryVault.create();
+	const writer = new PdfAnnotationWriter({ vault } as never);
+	const first = location([quad(10, 10, 30, 20)]);
+	const second = location([quad(40, 10, 60, 20)]);
+	const outside = location([quad(70, 10, 90, 20)]);
+	await writer.applyHighlight(first, getHighlightColor("yellow"), "first");
+	await writer.applyHighlight(second, getHighlightColor("blue"), "second");
+	await writer.applyHighlight(outside, getHighlightColor("red"), "outside");
+	const broad = location([quad(5, 5, 65, 25)]);
+
+	assert.equal((await writer.removeHighlight(broad, "intersecting")).count, 2);
+	assert.equal(await vault.annotationCount(), 1);
+	assert.equal(await writer.getHighlightColor(outside), "red");
+});
+
+test("Turkish uses its language code in translation requests and PDF normalization", async () => {
+	let requestUrl = "";
+	__setRequestUrl((params: { url: string }) => {
+		requestUrl = params.url;
+		return Promise.resolve({ status: 200, text: "", json: [[['hello']]] });
+	});
+	const service = new TranslatorService(() => ({ ...SETTINGS, translationProvider: "google" }));
+	const result = await service.translate({ ...REQUEST, text: "Merhaba", sourceLanguage: "tr", targetLanguage: "en" });
+	assert.equal(result.translatedText, "hello");
+	assert.equal(new URL(requestUrl).searchParams.get("sl"), "tr");
+	assert.equal(normalizeSelectionTextForPdf("İ-\nş"), "İş");
+});
+
 test("partial multi-line highlights are repaired before toggling off", async () => {
 	const vault = await MemoryVault.create();
 	const writer = new PdfAnnotationWriter({ vault } as never);
@@ -395,7 +467,7 @@ test("build metadata describes one release version", async () => {
 		readProjectJson("package-lock.json"),
 		readProjectJson("versions.json"),
 	]);
-	assert.equal(packageJson.version, "0.5.0");
+	assert.equal(packageJson.version, "0.5.1");
 	assert.equal(manifest.version, packageJson.version);
 	assert.equal(packageLock.version, packageJson.version);
 	assert.equal(packageLock.packages[""].version, packageJson.version);

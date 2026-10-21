@@ -1,19 +1,22 @@
 import zh from "./zh.json";
 import en from "./en.json";
+import de from "./de.json";
+import fr from "./fr.json";
+import ja from "./ja.json";
+import tr from "./tr.json";
 import { getLanguage } from "obsidian";
 
-type Translations = typeof zh;
+const bundles: Record<string, typeof en> = { en, de, fr, ja, tr, zh };
 
 /**
  * Get a translated string by dot-separated key.
  * Language is detected from Obsidian's configured app language.
- * zh* → Chinese, everything else → English.
+ * Supports the same interface languages as the translation selector.
  */
 export function t(key: string, vars?: Record<string, string | number>): string {
-    const lang = getLanguage();
-    const bundle: Translations = lang.startsWith("zh") ? zh : en;
+    const bundle = bundles[getLanguage().split("-")[0]] ?? en;
 
-    let text = resolve(bundle, key) ?? resolve(zh, key) ?? key;
+    let text = resolve(bundle, key) ?? resolve(en, key) ?? key;
 
     if (vars) {
         for (const [k, v] of Object.entries(vars)) {

@@ -92,7 +92,7 @@ function isHyphenationBreak(rawChars: RawChar[], index: number): boolean {
 
 	const previous = rawChars[index - 1]?.value ?? "";
 	const next = rawChars[cursor]?.value ?? "";
-	return sawLineBreak && /[A-Za-zÀ-ÖØ-öø-ÿ]/.test(previous) && /[A-Za-zÀ-ÖØ-öø-ÿ]/.test(next);
+	return sawLineBreak && /[A-Za-zÀ-ÖØ-öø-ÿĞğİıŞş]/.test(previous) && /[A-Za-zÀ-ÖØ-öø-ÿĞğİıŞş]/.test(next);
 }
 
 function skipFollowingWhitespace(rawChars: RawChar[], index: number): number {

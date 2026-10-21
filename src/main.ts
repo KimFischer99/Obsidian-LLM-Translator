@@ -113,6 +113,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			onTranslate: () => void this.retryLastSelection(),
 			onRetry: () => void this.retryLastSelection(),
 			onHighlight: () => void this.highlightActiveSelection(),
+			onRemoveHighlight: () => void this.removeActiveSelectionHighlight(),
 			onAddNote: () => void this.addPopupTranslationToNote(),
 			onClose: () => this.hidePopup(),
 		});
@@ -124,7 +125,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 		});
 		this.addCommand({
 			id: "open-pdf-ollama-translator-sidebar",
-			name: "Open sidebar",
+			name: t("command.openSidebar"),
 			callback: () => void this.activateSidebarView(),
 		});
 		this.registerSelectionEvents();
@@ -320,6 +321,22 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			await this.highlightService.toggleSelectionHighlight(selection, this.settings.defaultHighlightColor);
 		} catch (error) {
 			this.debug("PDF highlight failed.", error);
+			new Notice(`${t("notice.highlightFailed")} ${toReadableMessage(error)}`.trim());
+		}
+	}
+
+	async removeActiveSelectionHighlight(): Promise<void> {
+		const selection = this.selectionReader.readSelection() ?? this.lastSelection;
+		if (!selection) {
+			new Notice(t("notice.selectTextFirst"));
+			return;
+		}
+		try {
+			if (await this.highlightService.removeSelectionHighlight(selection) === false) {
+				new Notice(t("notice.noHighlightToRemove"));
+			}
+		} catch (error) {
+			this.debug("Could not remove PDF highlight.", error);
 			new Notice(`${t("notice.highlightFailed")} ${toReadableMessage(error)}`.trim());
 		}
 	}
@@ -606,7 +623,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 				text: selection.text,
 				sourceLanguage: this.settings.sourceLanguage,
 				targetLanguage: this.settings.targetLanguage,
-				allowedSourceLanguages: ["en", "de", "fr", "ja", "zh-Hans"],
+				allowedSourceLanguages: ["en", "de", "fr", "tr", "ja", "zh-Hans"],
 				signal: request.signal,
 			});
 			if (!request.signal.aborted) {
@@ -721,6 +738,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			onTranslate: () => void this.retryLastSelection(),
 			onRetry: () => void this.retryLastSelection(),
 			onHighlight: () => void this.highlightActiveSelection(),
+			onRemoveHighlight: () => void this.removeActiveSelectionHighlight(),
 			onAddNote: () => void this.addPopupTranslationToNote(),
 			onClose: () => this.hidePopup(),
 		});

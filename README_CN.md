@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/platform-Obsidian%20Desktop-purple" alt="Platform">
   <img src="https://img.shields.io/github/v/release/KimFischer99/Obsidian-LLM-Translator" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
-  <img src="https://img.shields.io/badge/language-Chinese%20%7C%20English-green" alt="Languages">
+  <img src="https://img.shields.io/badge/interface-6%20languages-green" alt="Interface languages">
 </p>
 
 <p align="center">
@@ -50,18 +50,21 @@
 - 侧边栏翻译面板，支持手动输入或使用当前选区
 - 复制译文 / 重试翻译 / 一键切换语言
 - 自定义翻译 Prompt，满足专业需求
+- 支持英语、德语、法语、土耳其语、日语和简体中文互译
 
 ### 🌐 多语言界面
 
 - 自动跟随 Obsidian 系统语言
-- 支持简体中文 / English 界面
+- 支持简体中文、英语、德语、法语、土耳其语和日语界面
 
 ### ✏️ 原生 PDF 高亮注释
 
 - **持久化高亮** — 写入标准 PDF 注释，跨 PDF 阅读器可见
 - **5 种颜色** — 黄、红、蓝、绿、紫，可配置默认颜色
 - **高亮批注** — 点击高亮可添加备注，随 PDF 文件保存
-- **切换与撤销** — 再次点击移除高亮，Cmd+Z / Ctrl+Z 撤销
+- **移除高亮** — 选中高亮的任意部分，在翻译弹窗中点击橡皮擦；选区触及的高亮都会被移除
+- 此前保存的跨行高亮可能由多条独立 PDF 注释组成；对这些旧高亮，橡皮擦只移除与选区相交的行。
+- **切换与撤销** — 对选区再次应用相同颜色可移除高亮，Cmd+Z / Ctrl+Z 撤销
 
 ---
 
@@ -185,6 +188,24 @@ citations, and formulas. Output only the translation.
 | API Key | 服务商分配的密钥 |
 | 模型名称 | 服务商支持的模型标识 |
 
+### llama.cpp（`llama-server`）
+
+**本地大模型**设置使用 Ollama 的 `/api/chat` 协议。连接 `llama-server` 时请选择 **云端 API → OpenAI Compatible**；这个通道会调用 `/v1/chat/completions`：
+
+```bash
+llama-server -m /path/to/model.gguf --alias translator-local --host 127.0.0.1 --port 8080
+```
+
+在 **设置 → 服务** 中选择 **云端 API**，填写：
+
+| 配置项 | 值 |
+|--------|----|
+| API 地址 | `http://127.0.0.1:8080/v1`（基础地址，不要附加 `/chat/completions`） |
+| 模型名称 | `translator-local`（与 `--alias` 一致） |
+| API Key | 如果服务端没有设置 `--api-key`，在 SecretStorage 中创建值为 `no-key-required` 的条目；否则填写真实密钥。插件要求此项非空。 |
+
+点击 **测试连接**。模型及服务器选项见 [llama.cpp 官方文档](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)。
+
 ### Google 翻译 / Bing 翻译
 
 无需任何配置，在翻译服务下拉菜单中直接选择即可使用。
@@ -195,10 +216,11 @@ citations, and formulas. Output only the translation.
 
 - **本地大模型**会把选中文本和翻译 Prompt 发送到配置的 Ollama 端点。使用默认的 `http://localhost:11434` 时，请求仅在本机；改用远程端点时，数据会经网络发送。
 - **云端 API**会把选中文本、翻译 Prompt、语言设置和模型标识发送到你配置的 API 地址。服务商可能按其隐私政策保留或处理这些数据。
+- 当 **云端 API** 指向 `127.0.0.1`（如上面的 llama.cpp 示例）时，请求仅在本机进行。
 - **Google 翻译 / Bing 翻译**会把选中文本和语言设置发送给 Google 或 Microsoft 的翻译服务。
 - **Cloud API Key** 通过 Obsidian `SecretStorage` 选择或创建；插件的 `data.json` 只保存所选密钥 ID，不保存密钥值。
 
-LLM Translator 0.5.0 要求 Obsidian 1.11.4 或更高版本。Obsidian 的版本解析机制可让旧版应用继续停留在插件 0.3.5。
+LLM Translator 0.5.1 要求 Obsidian 1.11.4 或更高版本。Obsidian 的版本解析机制可让旧版应用继续停留在插件 0.3.5。
 
 ---
 

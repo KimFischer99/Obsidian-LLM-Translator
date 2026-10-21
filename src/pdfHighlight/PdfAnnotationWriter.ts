@@ -20,6 +20,7 @@ import type {
 } from "./types";
 
 const NAME_PREFIX = "llm-translator:";
+const GROUP_NAME = PDFName.of("LLMTranslatorGroup");
 const OPACITY = 0.35;
 const TOLERANCE = 1.5;
 
@@ -29,6 +30,7 @@ interface ExistingAnnotation {
 	quadPoints: number[];
 	color?: [number, number, number];
 	note: string;
+	groupId: string;
 }
 
 export class PdfAnnotationWriter {
@@ -66,6 +68,7 @@ export class PdfAnnotationWriter {
 			const matched = Array.from(matchesByPage.values()).flat();
 			const existingNote = matched.find((annotation) => annotation.note.trim())?.note ?? "";
 			const effectiveNote = note ?? existingNote;
+			const groupId = crypto.randomUUID();
 			const sameColor = matched.length === location.quads.length
 				&& matched.every((annotation) => colorsEqual(annotation.color, color.pdfRgb));
 			this.removeMatches(pdfDoc, matchesByPage);
@@ -76,7 +79,7 @@ export class PdfAnnotationWriter {
 			}
 
 			for (const quad of location.quads) {
-				this.addAnnotation(pdfDoc, quad, color, stableAnnotationName(location.normalizedText, quad), effectiveNote);
+				this.addAnnotation(pdfDoc, quad, color, stableAnnotationName(location.normalizedText, quad), effectiveNote, groupId);
 			}
 			await this.save(location, pdfDoc);
 			return {
@@ -97,21 +100,27 @@ export class PdfAnnotationWriter {
 			const pdfDoc = await PDFDocument.load(pdfBytes);
 			const matchesByPage = this.findMatchingAnnotations(pdfDoc, location.quads);
 			const matched = Array.from(matchesByPage.values()).flat();
+			const groupId = matched.find((annotation) => annotation.groupId)?.groupId ?? crypto.randomUUID();
 			this.removeMatches(pdfDoc, matchesByPage);
 
 			for (const quad of location.quads) {
-				this.addAnnotation(pdfDoc, quad, color, stableAnnotationName(location.normalizedText, quad), note);
+				this.addAnnotation(pdfDoc, quad, color, stableAnnotationName(location.normalizedText, quad), note, groupId);
 			}
 			await this.save(location, pdfDoc);
 			return { action: matched.length > 0 ? "updated" : "added", count: location.quads.length };
 		});
 	}
 
-	async removeHighlight(location: LocatedPdfHighlight): Promise<PdfHighlightToggleResult> {
+	async removeHighlight(
+		location: LocatedPdfHighlight,
+		match: "exact" | "intersecting" = "exact",
+	): Promise<PdfHighlightToggleResult> {
 		return this.enqueue(location.file.path, async () => {
 			const pdfBytes = await this.app.vault.readBinary(location.file);
 			const pdfDoc = await PDFDocument.load(pdfBytes);
-			const matchesByPage = this.findMatchingAnnotations(pdfDoc, location.quads);
+			const matchesByPage = this.findMatchingAnnotations(
+				pdfDoc, location.quads, match === "intersecting" ? pdfQuadPointsIntersect : pdfQuadPointsEqual,
+			);
 			const matched = Array.from(matchesByPage.values()).flat();
 			this.removeMatches(pdfDoc, matchesByPage);
 			if (matched.length > 0) {
@@ -125,7 +134,7 @@ export class PdfAnnotationWriter {
 		return this.enqueue(file.path, async () => {
 			const pdfBytes = await this.app.vault.readBinary(file);
 			const pdfDoc = await PDFDocument.load(pdfBytes);
-			const highlights: PersistedPdfHighlight[] = [];
+			const highlights = new Map<string, PersistedPdfHighlight>();
 
 			for (let pageIndex = 0; pageIndex < pdfDoc.getPageCount(); pageIndex++) {
 				const page = pdfDoc.getPage(pageIndex);
@@ -149,20 +158,30 @@ export class PdfAnnotationWriter {
 					if (!name || !color) {
 						continue;
 					}
-					highlights.push({
-						id: `${file.path}:${name}:${pageIndex}:${index}`,
+					const groupId = readString(dict.lookupMaybe(GROUP_NAME, PDFString, PDFHexString));
+					const id = groupId ? `${file.path}:group:${groupId}` : `${file.path}:${name}:${pageIndex}:${index}`;
+					const quad = { pageIndex, quadPoints: quadPoints as PdfHighlightQuad["quadPoints"], rect };
+					const overlayRect = toOverlayRect(rect, page.getWidth(), page.getHeight(), pageIndex + 1);
+					const existing = highlights.get(id);
+					if (existing) {
+						existing.location.quads.push(quad);
+						existing.overlayRects.push(overlayRect);
+						continue;
+					}
+					highlights.set(id, {
+						id,
 						location: {
 							file,
 							normalizedText: name,
-							quads: [{ pageIndex, quadPoints: quadPoints as PdfHighlightQuad["quadPoints"], rect }],
+							quads: [quad],
 						},
 						color,
 						note: readString(dict.lookupMaybe(PDFName.of("Contents"), PDFString, PDFHexString)),
-						overlayRects: [toOverlayRect(rect, page.getWidth(), page.getHeight(), pageIndex + 1)],
+						overlayRects: [overlayRect],
 					});
 				}
 			}
-			return highlights;
+			return [...highlights.values()];
 		});
 	}
 
@@ -231,7 +250,11 @@ export class PdfAnnotationWriter {
 		}
 	}
 
-	private findMatchingAnnotations(pdfDoc: PDFDocument, quads: PdfHighlightQuad[]): Map<number, ExistingAnnotation[]> {
+	private findMatchingAnnotations(
+		pdfDoc: PDFDocument,
+		quads: PdfHighlightQuad[],
+		matchesQuad: (left: readonly number[], right: readonly number[]) => boolean = pdfQuadPointsEqual,
+	): Map<number, ExistingAnnotation[]> {
 		const matches = new Map<number, ExistingAnnotation[]>();
 
 		for (const quad of quads) {
@@ -248,7 +271,7 @@ export class PdfAnnotationWriter {
 				}
 
 				const existingQuad = readNumberArray(dict.lookupMaybe(PDFName.of("QuadPoints"), PDFArray));
-				if (!pdfQuadPointsEqual(existingQuad, quad.quadPoints)) {
+				if (!matchesQuad(existingQuad, quad.quadPoints)) {
 					continue;
 				}
 
@@ -262,6 +285,7 @@ export class PdfAnnotationWriter {
 					quadPoints: existingQuad,
 					color: readColor(dict.lookupMaybe(PDFName.of("C"), PDFArray)),
 					note: readString(dict.lookupMaybe(PDFName.of("Contents"), PDFString, PDFHexString)),
+					groupId: readString(dict.lookupMaybe(GROUP_NAME, PDFString, PDFHexString)),
 				});
 				matches.set(quad.pageIndex, group);
 			}
@@ -276,6 +300,7 @@ export class PdfAnnotationWriter {
 		color: HighlightColorConfig,
 		name: string,
 		note: string,
+		groupId: string,
 	): void {
 		const page = pdfDoc.getPage(quad.pageIndex);
 		let annots = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
@@ -292,6 +317,7 @@ export class PdfAnnotationWriter {
 			C: pdfDoc.context.obj(color.pdfRgb),
 			CA: PDFNumber.of(OPACITY),
 			NM: PDFString.of(name),
+			LLMTranslatorGroup: PDFString.of(groupId),
 			F: PDFNumber.of(4),
 			P: page.ref,
 		});
@@ -365,6 +391,13 @@ export function pdfQuadPointsEqual(left: readonly number[], right: readonly numb
 	);
 }
 
+export function pdfQuadPointsIntersect(left: readonly number[], right: readonly number[]): boolean {
+	if (left.length !== 8 || right.length !== 8) return false;
+	const a = quadPointsToRect(left);
+	const b = quadPointsToRect(right);
+	return a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+}
+
 function colorsEqual(
 	left: [number, number, number] | undefined,
 	right: readonly [number, number, number],
@@ -381,7 +414,7 @@ function stableAnnotationName(text: string, quad: PdfHighlightQuad): string {
 	return `${NAME_PREFIX}${hash.toString(16)}`;
 }
 
-function quadPointsToRect(points: number[]): PdfHighlightQuad["rect"] {
+function quadPointsToRect(points: readonly number[]): PdfHighlightQuad["rect"] {
 	const xs = [points[0], points[2], points[4], points[6]];
 	const ys = [points[1], points[3], points[5], points[7]];
 	return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];

@@ -1,4 +1,7 @@
 {
+  "command": {
+    "openSidebar": "Open translation sidebar"
+  },
   "settings": {
     "section": {
       "general": "General",
@@ -81,6 +84,7 @@
     "addToNote": "Add to note",
     "copyTranslation": "Copy translation",
     "highlightSelection": "Highlight selected PDF text",
+    "removeHighlight": "Remove selected PDF highlight",
     "retryTranslation": "Retry translation",
     "close": "Close",
     "sourceLanguage": "Source language",
@@ -108,6 +112,7 @@
     "english": "English",
     "german": "Deutsch",
     "french": "Français",
+    "turkish": "Türkçe",
     "japanese": "日本語",
     "chinese": "简体中文"
   },
@@ -137,6 +142,7 @@
     "selectionExceedsLimit": "Text exceeds ${count} characters.",
     "highlightPdfOnly": "PDF highlighting only works for selected text in a PDF.",
     "highlightNotFound": "Could not locate this selection in the PDF text layer.",
+    "noHighlightToRemove": "No LLM Translator highlight matches the selected text.",
     "highlightFailed": "Could not write the PDF highlight.",
     "pdfNoteConflict": "This PDF changed outside Obsidian while local annotation changes were pending. Any unsaved note is kept in this session; copy it before reloading the plugin.",
     "pdfNoteConflictWriteBlocked": "PDF annotation changes are paused because this PDF changed externally. Copy any unsaved note before reloading the plugin.",

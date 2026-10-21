@@ -128,6 +128,7 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 			{ value: "en", label: t("language.english") },
 			{ value: "de", label: t("language.german") },
 			{ value: "fr", label: t("language.french") },
+			{ value: "tr", label: t("language.turkish") },
 			{ value: "ja", label: t("language.japanese") },
 			{ value: "zh-Hans", label: t("language.chinese") },
 		]) {
@@ -150,6 +151,7 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 			{ value: "en", label: t("language.english") },
 			{ value: "de", label: t("language.german") },
 			{ value: "fr", label: t("language.french") },
+			{ value: "tr", label: t("language.turkish") },
 			{ value: "ja", label: t("language.japanese") },
 			{ value: "zh-Hans", label: t("language.chinese") },
 		]) {

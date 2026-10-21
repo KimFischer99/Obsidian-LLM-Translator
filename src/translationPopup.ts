@@ -24,6 +24,7 @@ interface PopupOptions {
 	onTranslate: () => void;
 	onRetry: () => void;
 	onHighlight: () => void;
+	onRemoveHighlight: () => void;
 	onAddNote: () => void;
 	onClose: () => void;
 }
@@ -33,6 +34,7 @@ const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; label: string
 	{ value: "en", label: "EN" },
 	{ value: "de", label: "DE" },
 	{ value: "fr", label: "FR" },
+	{ value: "tr", label: "TR" },
 	{ value: "ja", label: "JA" },
 	{ value: "zh-Hans", label: "ZH" },
 ];
@@ -41,6 +43,7 @@ const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto
 	{ value: "en", label: "EN" },
 	{ value: "de", label: "DE" },
 	{ value: "fr", label: "FR" },
+	{ value: "tr", label: "TR" },
 	{ value: "ja", label: "JA" },
 	{ value: "zh-Hans", label: "ZH" },
 ];
@@ -177,6 +180,9 @@ export class TranslationPopup {
 		highlightButton.addClass("pdf-ollama-translator-popup__button--highlight");
 		highlightButton.style.setProperty("--pdf-ollama-translator-highlight-color", highlightColor.css);
 		highlightButton.onClickEvent(() => this.options.onHighlight());
+
+		const removeHighlightButton = this.createIconButton("eraser", t("popup.removeHighlight"));
+		removeHighlightButton.onClickEvent(() => this.options.onRemoveHighlight());
 
 		if (this.options.showRetryButton) {
 			const retryButton = this.createIconButton("refresh-cw", t("popup.retryTranslation"));

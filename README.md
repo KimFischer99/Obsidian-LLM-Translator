@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/platform-Obsidian%20Desktop-purple" alt="Platform">
   <img src="https://img.shields.io/github/v/release/KimFischer99/Obsidian-LLM-Translator" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
-  <img src="https://img.shields.io/badge/language-Chinese%20%7C%20English-green" alt="Languages">
+  <img src="https://img.shields.io/badge/interface-6%20languages-green" alt="Interface languages">
 </p>
 
 <p align="center">
@@ -50,18 +50,21 @@
 - Sidebar translation panel for manual input or the current selection
 - Copy / Retry / One-click language switch
 - Custom translation prompt for professional needs
+- Translate between English, German, French, Turkish, Japanese, and Simplified Chinese
 
 ### 🌐 Multi-language Interface
 
 - Automatically follows Obsidian system language
-- Supports Chinese / English interface
+- Supports Chinese, English, German, French, Turkish, and Japanese interface
 
 ### ✏️ Native PDF Highlight Annotations
 
 - **Persistent highlights** — Written as standard PDF annotations, visible across all PDF readers
 - **5 colors** — Yellow, Red, Blue, Green, Purple; configurable default
 - **Highlight notes** — Click any highlight to attach a note, stored in the PDF
-- **Toggle & undo** — Click again to remove, Cmd+Z / Ctrl+Z to undo
+- **Remove highlights** — Select any part of a highlight and use the eraser button in the translation popup; every highlight touched by the selection is removed
+- Highlights saved before this change may span several independent PDF annotations; the eraser removes only the intersecting lines in those older highlights.
+- **Toggle & undo** — Reapply the same color to remove a selection, Cmd+Z / Ctrl+Z to undo
 
 ---
 
@@ -185,6 +188,24 @@ Supports any OpenAI-compatible API provider:
 | API Key | Provider's authentication key |
 | Model name | Provider's model identifier |
 
+### llama.cpp (`llama-server`)
+
+The **Local LLM** setting uses Ollama's `/api/chat` protocol. To connect `llama-server`, use **Cloud API → OpenAI Compatible**, which calls `/v1/chat/completions`:
+
+```bash
+llama-server -m /path/to/model.gguf --alias translator-local --host 127.0.0.1 --port 8080
+```
+
+In **Settings → Service**, choose **Cloud API** and enter:
+
+| Setting | Value |
+|---------|-------|
+| API URL | `http://127.0.0.1:8080/v1` (base URL; do not add `/chat/completions`) |
+| Model name | `translator-local` (the `--alias` value) |
+| API Key | Create a SecretStorage entry containing `no-key-required` if the server has no `--api-key`; otherwise use its real key. The plugin requires a nonempty value. |
+
+Click **Test connection**. See the [llama.cpp server documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md) for model and server options.
+
 ### Google Translate / Bing Translate
 
 No configuration required. Select directly from the translation service dropdown.
@@ -195,10 +216,11 @@ No configuration required. Select directly from the translation service dropdown
 
 - **Local LLM** sends selected text and the translation prompt to the configured Ollama endpoint. With the default `http://localhost:11434` endpoint, the request stays on this computer; a custom remote endpoint sends it over the network.
 - **Cloud API** sends selected text, the translation prompt, language settings, and model identifier to the API URL you configure. The provider may retain or process this data under its own policy.
+- When **Cloud API** points to `127.0.0.1`, such as the llama.cpp example above, the request stays on this computer.
 - **Google Translate / Bing Translate** send selected text and language settings to Google or Microsoft translation services.
 - **Cloud API keys** are selected or created through Obsidian `SecretStorage`; `data.json` stores only the selected secret ID, not the key value.
 
-LLM Translator 0.5.0 requires Obsidian 1.11.4 or later. Obsidian's version resolver can keep older installations on plugin 0.3.5.
+LLM Translator 0.5.1 requires Obsidian 1.11.4 or later. Obsidian's version resolver can keep older installations on plugin 0.3.5.
 
 ---
 

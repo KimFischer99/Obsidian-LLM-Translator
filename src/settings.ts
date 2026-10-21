@@ -10,6 +10,7 @@ const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; labelKey: str
 	{ value: "en", labelKey: "language.english" },
 	{ value: "de", labelKey: "language.german" },
 	{ value: "fr", labelKey: "language.french" },
+	{ value: "tr", labelKey: "language.turkish" },
 	{ value: "ja", labelKey: "language.japanese" },
 	{ value: "zh-Hans", labelKey: "language.chinese" },
 ];
@@ -18,6 +19,7 @@ const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto
 	{ value: "en", labelKey: "language.english" },
 	{ value: "de", labelKey: "language.german" },
 	{ value: "fr", labelKey: "language.french" },
+	{ value: "tr", labelKey: "language.turkish" },
 	{ value: "ja", labelKey: "language.japanese" },
 	{ value: "zh-Hans", labelKey: "language.chinese" },
 ];

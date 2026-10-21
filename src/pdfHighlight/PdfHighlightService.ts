@@ -3,7 +3,7 @@ import type { PdfTextSelection, HighlightColorId } from "../types";
 import { t } from "../i18n";
 import { getHighlightColor, getHighlightColorFromPdfRgb } from "./colors";
 import { HighlightOverlay } from "./HighlightOverlay";
-import { PdfAnnotationWriter, pdfQuadPointsEqual } from "./PdfAnnotationWriter";
+import { PdfAnnotationWriter, pdfQuadPointsEqual, pdfQuadPointsIntersect } from "./PdfAnnotationWriter";
 import { PdfTextLocator } from "./PdfTextLocator";
 import { normalizeSelectionTextForPdf } from "./normalize";
 import type { HighlightColorConfig, LocatedPdfHighlight, PersistedPdfHighlight } from "./types";
@@ -95,6 +95,44 @@ export class PdfHighlightService {
 		this.pendingRemovals.delete(key);
 		this.lastEntryKey = key;
 		this.overlay.render(key, selection, color, entry.note, (note, flush) => this.updateNote(key, note, flush));
+	}
+
+	async removeSelectionHighlight(selection: PdfTextSelection): Promise<boolean | null> {
+		if (!selection.file?.path.toLowerCase().endsWith(".pdf")) {
+			new Notice(t("notice.highlightPdfOnly"));
+			return null;
+		}
+		if (this.noteConflicts.has(selection.file.path)) {
+			new Notice(t("notice.pdfNoteConflictWriteBlocked"));
+			return null;
+		}
+		const location = await this.locator.locate(
+			selection.file, selection.text, selection.pageHint, selection.overlayRects,
+		);
+		if (!location) return false;
+		const selectedEntries = [...this.entries.values()].filter((entry) =>
+			locationsOverlap(entry.location, location, pdfQuadPointsIntersect));
+		const removalLocation = {
+			...location,
+			quads: [...location.quads, ...selectedEntries.flatMap((entry) => entry.location.quads)],
+		};
+		const removedEntries = [...this.entries.values()].filter((entry) =>
+			locationsOverlap(entry.location, removalLocation, pdfQuadPointsIntersect));
+		for (const entry of removedEntries) {
+			if (!entry.persisted) await this.persist(entry);
+		}
+		const result = await this.writer.removeHighlight(removalLocation, "intersecting");
+		if (result.count === 0) return false;
+		for (const entry of removedEntries) this.removeEntry(entry, false);
+		if (removedEntries.length > 0) {
+			const survivors = (await this.writer.readHighlights(selection.file))
+				.filter((highlight) => removedEntries.some((entry) => locationsOverlap(entry.location, highlight.location)));
+			await this.locator.restoreOverlayRects(selection.file, survivors);
+			for (const highlight of survivors) {
+				if (!this.entries.has(highlight.id)) this.renderPersistedHighlight(highlight);
+			}
+		}
+		return true;
 	}
 
 	async getSelectionHighlightColor(selection: PdfTextSelection): Promise<HighlightColorId | null> {
@@ -406,11 +444,15 @@ function getLocationKey(location: LocatedPdfHighlight): string {
 	return `${location.file.path}:${quads}`;
 }
 
-function locationsOverlap(left: LocatedPdfHighlight, right: LocatedPdfHighlight): boolean {
+function locationsOverlap(
+	left: LocatedPdfHighlight,
+	right: LocatedPdfHighlight,
+	matches: (left: readonly number[], right: readonly number[]) => boolean = pdfQuadPointsEqual,
+): boolean {
 	return left.file.path === right.file.path && left.quads.some((leftQuad) => (
 		right.quads.some((rightQuad) => (
 			leftQuad.pageIndex === rightQuad.pageIndex
-			&& pdfQuadPointsEqual(leftQuad.quadPoints, rightQuad.quadPoints)
+			&& matches(leftQuad.quadPoints, rightQuad.quadPoints)
 		))
 	));
 }

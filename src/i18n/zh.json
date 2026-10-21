@@ -1,4 +1,7 @@
 {
+  "command": {
+    "openSidebar": "打开翻译侧栏"
+  },
   "settings": {
     "section": {
       "general": "常规",
@@ -81,6 +84,7 @@
     "addToNote": "加入笔记",
     "copyTranslation": "复制译文",
     "highlightSelection": "高亮选中的 PDF 文本",
+    "removeHighlight": "移除选中的 PDF 高亮",
     "retryTranslation": "重新翻译",
     "close": "关闭",
     "sourceLanguage": "源语言",
@@ -108,6 +112,7 @@
     "english": "英语",
     "german": "德语",
     "french": "法语",
+    "turkish": "土耳其语",
     "japanese": "日语",
     "chinese": "简体中文"
   },
@@ -137,6 +142,7 @@
     "selectionExceedsLimit": "文本超过 ${count} 个字符。",
     "highlightPdfOnly": "PDF 高亮只支持 PDF 中选中的文本。",
     "highlightNotFound": "无法在 PDF 文本层中定位这个选区。",
+    "noHighlightToRemove": "选中文本没有对应的 LLM Translator 高亮。",
     "highlightFailed": "无法写入 PDF 高亮。",
     "pdfNoteConflict": "此 PDF 在本地批注变更待写入时发生了外部修改。未保存的备注会保留在本次会话中；重新加载插件前请先复制。",
     "pdfNoteConflictWriteBlocked": "此 PDF 发生外部修改，已暂停批注写入。若有未保存的备注，请在重新加载插件前复制。",
