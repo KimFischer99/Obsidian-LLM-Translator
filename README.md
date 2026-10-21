@@ -198,7 +198,7 @@ No configuration required. Select directly from the translation service dropdown
 - **Google Translate / Bing Translate** send selected text and language settings to Google or Microsoft translation services.
 - **Cloud API keys** are selected or created through Obsidian `SecretStorage`; `data.json` stores only the selected secret ID, not the key value.
 
-LLM Translator 0.4.0 requires Obsidian 1.11.4 or later. Obsidian's version resolver can keep older installations on plugin 0.3.5.
+LLM Translator 0.5.0 requires Obsidian 1.11.4 or later. Obsidian's version resolver can keep older installations on plugin 0.3.5.
 
 ---
 

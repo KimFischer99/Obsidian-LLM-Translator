@@ -1,25 +1,25 @@
-import { App, DropdownComponent, Notice, PluginSettingTab, SecretComponent, Setting } from "obsidian";
+import { App, DropdownComponent, FuzzySuggestModal, Notice, PluginSettingTab, SecretComponent, Setting, TFile } from "obsidian";
 import type PdfOllamaTranslatorPlugin from "./main";
 import { DEFAULT_TRANSLATION_PROMPT } from "./translatorService";
 import type { HighlightColorId, TranslationLanguage, TranslationProviderId } from "./types";
 import { t } from "./i18n";
 import { HIGHLIGHT_COLOR_ORDER, getHighlightColor } from "./pdfHighlight/colors";
 
-const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; label: string }> = [
-	{ value: "auto", label: "Auto" },
-	{ value: "en", label: "English" },
-	{ value: "de", label: "Deutsch" },
-	{ value: "fr", label: "Français" },
-	{ value: "ja", label: "日本語" },
-	{ value: "zh-Hans", label: "简体中文" },
+const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; labelKey: string }> = [
+	{ value: "auto", labelKey: "language.auto" },
+	{ value: "en", labelKey: "language.english" },
+	{ value: "de", labelKey: "language.german" },
+	{ value: "fr", labelKey: "language.french" },
+	{ value: "ja", labelKey: "language.japanese" },
+	{ value: "zh-Hans", labelKey: "language.chinese" },
 ];
 
-const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto">; label: string }> = [
-	{ value: "en", label: "English" },
-	{ value: "de", label: "Deutsch" },
-	{ value: "fr", label: "Français" },
-	{ value: "ja", label: "日本語" },
-	{ value: "zh-Hans", label: "简体中文" },
+const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto">; labelKey: string }> = [
+	{ value: "en", labelKey: "language.english" },
+	{ value: "de", labelKey: "language.german" },
+	{ value: "fr", labelKey: "language.french" },
+	{ value: "ja", labelKey: "language.japanese" },
+	{ value: "zh-Hans", labelKey: "language.chinese" },
 ];
 
 export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
@@ -65,13 +65,33 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 					}),
 			);
 
+		new Setting(containerEl)
+			.setName(t("settings.noteTarget"))
+			.addText((text) => {
+				text.setPlaceholder(t("settings.noteTargetDefault"))
+					.setValue(this.plugin.settings.noteTargetPath);
+				text.inputEl.readOnly = true;
+			})
+			.addButton((button) => button
+				.setButtonText(t("settings.chooseNote"))
+				.onClick(() => new NoteTargetPicker(this.app, async (file) => {
+					await this.plugin.updateSettings({ noteTargetPath: file.path });
+					this.display();
+				}).open()))
+			.addButton((button) => button
+				.setButtonText(t("settings.noteTargetDefault"))
+				.onClick(async () => {
+					await this.plugin.updateSettings({ noteTargetPath: "" });
+					this.display();
+				}));
+
 		this.addSection(t("settings.section.service"));
 		new Setting(containerEl)
 			.setName(t("settings.translationService"))
 			.addDropdown((dropdown) =>
 				dropdown
-					.addOption("local-llm", "Local LLM")
-					.addOption("cloud-api", "Cloud API")
+					.addOption("local-llm", t("provider.localLlm"))
+					.addOption("cloud-api", t("provider.cloudApi"))
 					.addOption("google", "Google")
 					.addOption("bing", "Bing")
 					.setValue(this.plugin.settings.translationProvider)
@@ -93,7 +113,7 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 			.setName(t("settings.sourceLanguage"))
 			.addDropdown((dropdown) => {
 				for (const option of SOURCE_LANGUAGE_OPTIONS) {
-					dropdown.addOption(option.value, option.label);
+					dropdown.addOption(option.value, t(option.labelKey));
 				}
 				return dropdown
 					.setValue(this.plugin.settings.sourceLanguage)
@@ -106,7 +126,7 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 			.setName(t("settings.targetLanguage"))
 			.addDropdown((dropdown) => {
 				for (const option of TARGET_LANGUAGE_OPTIONS) {
-					dropdown.addOption(option.value, option.label);
+					dropdown.addOption(option.value, t(option.labelKey));
 				}
 				return dropdown
 					.setValue(this.plugin.settings.targetLanguage)
@@ -177,7 +197,7 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 			.setName(t("settings.defaultHighlightColor"))
 			.addDropdown((dropdown) => {
 				for (const colorId of HIGHLIGHT_COLOR_ORDER) {
-					dropdown.addOption(colorId, getHighlightColor(colorId).label);
+					dropdown.addOption(colorId, t(`highlight.color.${colorId}`));
 				}
 				return dropdown
 					.setValue(this.plugin.settings.defaultHighlightColor)
@@ -438,5 +458,24 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 
 	private addSection(title: string): void {
 		new Setting(this.containerEl).setName(title).setHeading();
+	}
+}
+
+class NoteTargetPicker extends FuzzySuggestModal<TFile> {
+	constructor(app: App, private choose: (file: TFile) => void) {
+		super(app);
+		this.setPlaceholder(t("settings.chooseNote"));
+	}
+
+	getItems(): TFile[] {
+		return this.app.vault.getMarkdownFiles();
+	}
+
+	getItemText(file: TFile): string {
+		return file.path;
+	}
+
+	onChooseItem(file: TFile): void {
+		this.choose(file);
 	}
 }

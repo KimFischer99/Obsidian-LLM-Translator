@@ -1,4 +1,6 @@
 import type { App, TFile } from "obsidian";
+import type { HighlightColorId } from "../types";
+import { getHighlightColorFromPdfRgb } from "./colors";
 import {
 	PDFArray,
 	PDFDict,
@@ -31,8 +33,26 @@ interface ExistingAnnotation {
 
 export class PdfAnnotationWriter {
 	private queues = new Map<string, Promise<void>>();
+	private writingFiles = new Set<string>();
+	private lastWritten = new Map<string, { length: number; hash: string }>();
 
 	constructor(private app: App) {}
+
+	isWriting(path: string): boolean {
+		return this.writingFiles.has(path);
+	}
+
+	async isOwnWrite(file: TFile): Promise<boolean> {
+		if (this.isWriting(file.path)) return true;
+		const expected = this.lastWritten.get(file.path);
+		if (!expected) return false;
+		try {
+			const bytes = new Uint8Array(await this.app.vault.readBinary(file));
+			return bytes.length === expected.length && await hashBytes(bytes) === expected.hash;
+		} catch {
+			return false;
+		}
+	}
 
 	async toggleHighlight(
 		location: LocatedPdfHighlight,
@@ -146,6 +166,19 @@ export class PdfAnnotationWriter {
 		});
 	}
 
+	async getHighlightColor(location: LocatedPdfHighlight): Promise<HighlightColorId | null> {
+		if (location.quads.length === 0) return null;
+		return this.enqueue(location.file.path, async () => {
+			const pdfDoc = await PDFDocument.load(await this.app.vault.readBinary(location.file));
+			const matches = this.findMatchingAnnotations(pdfDoc, location.quads);
+			const colors = location.quads.map((quad) => matches.get(quad.pageIndex)
+				?.find((annotation) => pdfQuadPointsEqual(annotation.quadPoints, quad.quadPoints))?.color);
+			const colorId = colors[0] && getHighlightColorFromPdfRgb(colors[0]).id;
+			return colorId && colors.every((color) => color && getHighlightColorFromPdfRgb(color).id === colorId)
+				? colorId : null;
+		});
+	}
+
 	async removeAllHighlights(file: TFile): Promise<number> {
 		return this.enqueue(file.path, async () => {
 			const pdfBytes = await this.app.vault.readBinary(file);
@@ -187,7 +220,15 @@ export class PdfAnnotationWriter {
 
 	private async save(location: LocatedPdfHighlight, pdfDoc: PDFDocument): Promise<void> {
 		const modified = await pdfDoc.save();
-		await this.app.vault.modifyBinary(location.file, toArrayBuffer(modified));
+		const hash = await hashBytes(modified);
+		this.writingFiles.add(location.file.path);
+		try {
+			const bytes = toArrayBuffer(modified);
+			await this.app.vault.modifyBinary(location.file, bytes);
+			this.lastWritten.set(location.file.path, { length: modified.length, hash });
+		} finally {
+			this.writingFiles.delete(location.file.path);
+		}
 	}
 
 	private findMatchingAnnotations(pdfDoc: PDFDocument, quads: PdfHighlightQuad[]): Map<number, ExistingAnnotation[]> {
@@ -274,6 +315,11 @@ export class PdfAnnotationWriter {
 			}
 		}
 	}
+}
+
+async function hashBytes(bytes: Uint8Array): Promise<string> {
+	const digest = await crypto.subtle.digest("SHA-256", toArrayBuffer(bytes));
+	return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function isPluginHighlight(dict: PDFDict): boolean {

@@ -11,6 +11,9 @@
     "pdfOnly": "PDF only",
     "autoTranslateSelection": "Auto-translate selected text",
     "enablePopup": "Enable reader selection popup",
+    "noteTarget": "Translation note directory",
+    "noteTargetDefault": "Per source file",
+    "chooseNote": "Choose note",
     "translationService": "Translation service",
     "sourceLanguage": "Source language",
     "targetLanguage": "Target language",
@@ -63,15 +66,19 @@
     "autoTransLabel": "Auto-translate selection",
     "clear": "Clear",
     "copy": "Copy",
+    "note": "Note",
     "raw": "Raw",
     "result": "Result",
     "both": "Both",
+    "addToNote": "Add to note",
     "highlightColor": "Highlight",
     "clearAllHighlights": "Clear all",
     "clearAllHighlightsConfirm": "Remove every LLM Translator highlight from the current PDF? This cannot be undone."
   },
   "popup": {
     "translating": "Translating...",
+    "translateSelection": "Translate",
+    "addToNote": "Add to note",
     "copyTranslation": "Copy translation",
     "highlightSelection": "Highlight selected PDF text",
     "retryTranslation": "Retry translation",
@@ -81,7 +88,43 @@
     "targetLanguage": "Target language"
   },
   "highlight": {
-    "copyNote": "Copy note"
+    "copyNote": "Copy note",
+    "addNote": "Add note",
+    "color": {
+      "yellow": "Yellow",
+      "red": "Red",
+      "blue": "Blue",
+      "green": "Green",
+      "purple": "Purple"
+    }
+  },
+  "provider": {
+    "localLlm": "Local LLM",
+    "cloudApi": "Cloud API"
+  },
+  "language": {
+    "auto": "Auto",
+    "autoShort": "Auto",
+    "english": "English",
+    "german": "Deutsch",
+    "french": "Français",
+    "japanese": "日本語",
+    "chinese": "简体中文"
+  },
+  "note": {
+    "source": "Source",
+    "page": "Page ${page}",
+    "confirmTitle": "Create translation note",
+    "confirmBody": "Create ${path}?",
+    "create": "Create",
+    "cancel": "Cancel",
+    "saved": "Added to note",
+    "busy": "A note is already being saved.",
+    "emptyTranslation": "Add a completed translation with both original and translated text.",
+    "sourceRequired": "Open a source document before adding this translation to a note.",
+    "invalidTarget": "The selected Markdown destination no longer exists.",
+    "pathConflict": "A different file already uses this translation note name.",
+    "writeFailed": "Could not add to note: ${error}"
   },
   "notice": {
     "nothingToCopy": "Nothing to copy.",
@@ -95,6 +138,8 @@
     "highlightPdfOnly": "PDF highlighting only works for selected text in a PDF.",
     "highlightNotFound": "Could not locate this selection in the PDF text layer.",
     "highlightFailed": "Could not write the PDF highlight.",
+    "pdfNoteConflict": "This PDF changed outside Obsidian while local annotation changes were pending. Any unsaved note is kept in this session; copy it before reloading the plugin.",
+    "pdfNoteConflictWriteBlocked": "PDF annotation changes are paused because this PDF changed externally. Copy any unsaved note before reloading the plugin.",
     "openPdfFirst": "Open a PDF first."
   },
   "error": {

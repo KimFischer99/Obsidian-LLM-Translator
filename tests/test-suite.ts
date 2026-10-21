@@ -3,11 +3,13 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { PDFArray, PDFDocument, PDFName } from "pdf-lib";
-import { __setRequestUrl } from "obsidian";
+import { TFile, __setRequestUrl } from "obsidian";
 import { PdfAnnotationWriter, pdfQuadPointsEqual } from "../src/pdfHighlight/PdfAnnotationWriter";
 import { getHighlightColor } from "../src/pdfHighlight/colors";
 import type { LocatedPdfHighlight, PdfHighlightQuad } from "../src/pdfHighlight/types";
 import { normalizeSelectionTextForPdf } from "../src/pdfHighlight/normalize";
+import { appendTranslationNote } from "../src/noteExport";
+import PdfOllamaTranslatorPlugin from "../src/main";
 import {
 	cleanModelOutput,
 	normalizeCloudApiBaseUrl,
@@ -71,6 +73,63 @@ test("translation helpers validate URLs and clean bounded output", () => {
 	assert.equal(normalizeSelectionTextForPdf("A\u00a0  B\r\nC"), "A B C");
 });
 
+test("manual bar translation remains in the popup when the sidebar is visible", async () => {
+	const plugin = Object.create(PdfOllamaTranslatorPlugin.prototype) as PdfOllamaTranslatorPlugin;
+	const state = plugin as unknown as Record<string, unknown>;
+	const selection = { text: "selected text", rect: { left: 12, top: 8 }, document: {} };
+	const events: string[] = [];
+	let finishTranslation!: (value: unknown) => void;
+	state.settings = { ...SETTINGS, autoTranslateSelection: false };
+	state.selectionReader = { readSelection: () => selection };
+	state.popup = {
+		showManualActions: () => events.push("manual"),
+		showLoading: () => events.push("loading"),
+		showResult: () => events.push("result"),
+		hide: () => events.push("hidden"),
+	};
+	state.translator = { translate: () => new Promise((resolve) => { finishTranslation = resolve; }) };
+	state.isSidebarVisible = () => true;
+	state.updateSidebarState = () => undefined;
+	state.debug = () => undefined;
+	const call = (name: string, ...args: unknown[]) => (state[name] as (...args: unknown[]) => unknown).apply(plugin, args);
+
+	call("scheduleSelectionTranslation", selection.document);
+	const pending = call("retryLastSelection") as Promise<void>;
+	assert.deepEqual(events, ["manual", "loading"]);
+	call("scheduleSelectionTranslation", selection.document);
+	assert.deepEqual(events, ["manual", "loading"]);
+	finishTranslation({ sourceText: selection.text, translatedText: "result text" });
+	await pending;
+	call("scheduleSelectionTranslation", selection.document);
+	assert.deepEqual(events, ["manual", "loading", "result"]);
+});
+
+test("disabling popup during a request keeps the completed result in the sidebar", async () => {
+	const plugin = Object.create(PdfOllamaTranslatorPlugin.prototype) as PdfOllamaTranslatorPlugin;
+	const state = plugin as unknown as Record<string, unknown>;
+	const events: string[] = [];
+	let finishTranslation!: (value: unknown) => void;
+	state.settings = { ...SETTINGS, enablePopup: true };
+	state.popup = {
+		showLoading: () => events.push("loading"),
+		showResult: () => events.push("result"),
+		hide: () => events.push("hidden"),
+	};
+	state.translator = { translate: () => new Promise((resolve) => { finishTranslation = resolve; }) };
+	state.isSidebarVisible = () => false;
+	state.updateSidebarState = (value: { status: string }) => events.push(value.status);
+	state.saveSettings = async () => undefined;
+	state.syncPopupOptions = () => undefined;
+	state.refreshSidebarViews = () => undefined;
+	state.debug = () => undefined;
+	const selection = { text: "selected text", rect: { left: 12, top: 8 }, document: {} };
+	const pending = (state.translateSelection as (selection: unknown, force: boolean) => Promise<void>).call(plugin, selection, true);
+	await plugin.updateSettings({ enablePopup: false });
+	finishTranslation({ sourceText: selection.text, translatedText: "result text" });
+	await pending;
+	assert.deepEqual(events, ["loading", "loading", "hidden", "success"]);
+});
+
 test("provider lane cancels stale work and waits for the physical request", async () => {
 	const transports: Array<{
 		params: { body?: string };
@@ -120,6 +179,21 @@ test("timeout is reported immediately but the next request stays queued", async 
 	assert.equal((await nextPromise).translatedText, "next-result");
 });
 
+test("queued request times out without starting another transport", async () => {
+	const settings = { ...SETTINGS, requestTimeoutMs: 10 };
+	const transports: Array<{ resolve: (response: { status: number; text: string; json: unknown }) => void }> = [];
+	__setRequestUrl(() => new Promise((resolve) => transports.push({ resolve })));
+	const service = new TranslatorService(() => settings);
+
+	assert.ok(await service.translate(REQUEST).catch((error) => error) instanceof TranslationTimeoutError);
+	const queued = service.translate({ ...REQUEST, text: "queued" }).catch((error) => error);
+	assert.ok(await queued instanceof TranslationTimeoutError);
+	assert.equal(transports.length, 1);
+	transports[0].resolve(okOllamaResponse("late"));
+	await nextTask();
+	assert.equal(transports.length, 1);
+});
+
 test("cloud requests resolve the key through SecretStorage", async () => {
 	let authorization = "";
 	__setRequestUrl((params: { headers?: Record<string, string> }) => {
@@ -147,6 +221,9 @@ test("PDF writes are serialized and preserve concurrent highlights", async () =>
 		writer.toggleHighlight(second, getHighlightColor("blue")),
 	]);
 	assert.equal(await vault.annotationCount(), 2);
+	assert.equal(await writer.getHighlightColor(first), "yellow");
+	assert.equal(await writer.getHighlightColor(second), "blue");
+	assert.equal(await writer.getHighlightColor(location([...first.quads, ...second.quads])), null);
 });
 
 test("partial multi-line highlights are repaired before toggling off", async () => {
@@ -209,6 +286,69 @@ test("blank plugin highlights remain restorable without a native Contents value"
 	assert.equal(restored[0].note, "");
 });
 
+test("translation note creation asks once and later appends to the same source note", async () => {
+	const { app, files } = noteApp();
+	const source = new TFile("Papers/paper.pdf");
+	const snapshot = { sourceText: "Hello", translatedText: "你好", file: source, pageHint: 2 };
+	const target = "Papers/paper.pdf-Translation-Note.md";
+	let confirmations = 0;
+	assert.equal(await appendTranslationNote(app as never, snapshot, "", async (path) => {
+		assert.equal(path, target);
+		confirmations++;
+		return true;
+	}), target);
+	assert.equal(await appendTranslationNote(app as never, { ...snapshot, sourceText: "World", translatedText: "世界" }, "", async () => {
+		throw new Error("confirmation must not reopen");
+	}), target);
+	assert.equal(confirmations, 1);
+	assert.equal(files.size, 1);
+	const content = files.get(target) ?? "";
+	assert.equal((content.match(/<table /g) ?? []).length, 2);
+	assert.equal((content.match(/<tr>/g) ?? []).length, 6);
+	assert.match(content, /border:2px solid #5aa9ff[\s\S]*?<td style="padding:8px">Hello<\/td>[\s\S]*?<td[^>]*>你好<\/td>/);
+	assert.match(content, /<small>Source: <a class="internal-link" href="Papers\/paper\.pdf#page=2">paper\.pdf<\/a> · Page 2<\/small>/);
+	assert.doesNotMatch(content, /\*\*Original\*\*|\*\*Translation\*\*|\n---\n/);
+});
+
+test("custom Markdown target collects translations from different source files", async () => {
+	const target = "Notes/Translations.md";
+	const { app, files } = noteApp({ [target]: "# My notes\n" }, new TFile("Papers/two.pdf"));
+	for (const [name, file] of [["one.pdf", new TFile("Papers/one.pdf")], ["two.pdf", undefined]] as const) {
+		await appendTranslationNote(app as never, {
+			sourceText: name,
+			translatedText: `译文 ${name}`,
+			file,
+		}, target, async () => { throw new Error("custom target must not create a file"); });
+	}
+	assert.equal(files.size, 1);
+	assert.match(files.get(target) ?? "", /# My notes[\s\S]*?href="Papers\/one\.pdf"[\s\S]*?href="Papers\/two\.pdf"/);
+});
+
+test("translation note table escapes snapshots and uses a matched highlight color", async () => {
+	const target = "Notes/Translations.md";
+	const { app, files } = noteApp({ [target]: "" });
+	await appendTranslationNote(app as never, {
+		sourceText: "<script>alert('x')</script>\nA & B",
+		translatedText: "<b>译文</b>",
+		file: new TFile('Papers/a & "b".pdf'),
+		highlightColor: "red",
+	}, target, async () => true);
+	const content = files.get(target) ?? "";
+	assert.match(content, /border:2px solid #ff6b6b/);
+	assert.match(content, /&#60;script&#62;alert\(&#39;x&#39;\)&#60;\/script&#62;<br>A &#38; B/);
+	assert.match(content, /href="Papers\/a &#38; &#34;b&#34;\.pdf"/);
+	assert.doesNotMatch(content, /<script>|<b>译文<\/b>/);
+});
+
+test("default note name collision leaves the unrelated file untouched", async () => {
+	const target = "Papers/paper.pdf-Translation-Note.md";
+	const { app, files } = noteApp({ [target]: "User notes\n" });
+	await assert.rejects(appendTranslationNote(app as never, {
+		sourceText: "Hello", translatedText: "你好", file: new TFile("Papers/paper.pdf"),
+	}, "", async () => true), /different file/);
+	assert.equal(files.get(target), "User notes\n");
+});
+
 test("annotation interaction and style regression guards stay enabled", async () => {
 	const [overlay, service, main, styles] = await Promise.all([
 		readProjectFile("src/pdfHighlight/HighlightOverlay.ts"),
@@ -221,7 +361,7 @@ test("annotation interaction and style regression guards stay enabled", async ()
 	assert.match(overlay, /event\.stopImmediatePropagation\(\)/);
 	assert.doesNotMatch(overlay, /style\.(?:background|pointerEvents|cursor)\s*=/);
 	assert.doesNotMatch(overlay, /instanceof (Document|Node|Element)/);
-	assert.match(main, /isHighlightNoteTarget\(activeDocument\.activeElement\)/);
+	assert.match(main, /isHighlightNoteTarget\(doc\.activeElement\)/);
 	assert.doesNotMatch(main, /target instanceof Element/);
 	assert.doesNotMatch(styles, /\.commentPopup|\.annotationCommentButton/);
 	assert.match(styles, /\.pdf-ollama-translator-highlight-note-editor[\s\S]*?resize: both/);
@@ -255,7 +395,7 @@ test("build metadata describes one release version", async () => {
 		readProjectJson("package-lock.json"),
 		readProjectJson("versions.json"),
 	]);
-	assert.equal(packageJson.version, "0.4.0");
+	assert.equal(packageJson.version, "0.5.0");
 	assert.equal(manifest.version, packageJson.version);
 	assert.equal(packageLock.version, packageJson.version);
 	assert.equal(packageLock.packages[""].version, packageJson.version);
@@ -284,6 +424,29 @@ class MemoryVault {
 		const pdf = await PDFDocument.load(this.bytes);
 		return pdf.getPage(0).node.lookupMaybe(PDFName.of("Annots"), PDFArray)?.size() ?? 0;
 	}
+}
+
+function noteApp(initial: Record<string, string> = {}, activeFile: TFile | null = null): { app: object; files: Map<string, string> } {
+	const files = new Map(Object.entries(initial));
+	return {
+		files,
+		app: {
+			workspace: { getActiveFile: () => activeFile },
+			vault: {
+				getAbstractFileByPath: (path: string) => files.has(path) ? new TFile(path) : null,
+				create: async (path: string, content: string) => {
+					if (files.has(path)) throw new Error("already exists");
+					files.set(path, content);
+					return new TFile(path);
+				},
+				process: async (file: TFile, change: (content: string) => string) => {
+					const next = change(files.get(file.path) ?? "");
+					files.set(file.path, next);
+					return next;
+				},
+			},
+		},
+	};
 }
 
 function quad(left: number, bottom: number, right: number, top: number): PdfHighlightQuad {

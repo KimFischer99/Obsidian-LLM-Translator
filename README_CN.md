@@ -198,7 +198,7 @@ citations, and formulas. Output only the translation.
 - **Google 翻译 / Bing 翻译**会把选中文本和语言设置发送给 Google 或 Microsoft 的翻译服务。
 - **Cloud API Key** 通过 Obsidian `SecretStorage` 选择或创建；插件的 `data.json` 只保存所选密钥 ID，不保存密钥值。
 
-LLM Translator 0.4.0 要求 Obsidian 1.11.4 或更高版本。Obsidian 的版本解析机制可让旧版应用继续停留在插件 0.3.5。
+LLM Translator 0.5.0 要求 Obsidian 1.11.4 或更高版本。Obsidian 的版本解析机制可让旧版应用继续停留在插件 0.3.5。
 
 ---
 

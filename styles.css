@@ -18,6 +18,16 @@
 	line-height: var(--pdf-ollama-translator-line-height, 1.6);
 }
 
+.pdf-ollama-translator-popup--actions-only {
+	min-width: 0;
+	min-height: 0;
+	resize: none;
+}
+
+.pdf-ollama-translator-popup--actions-only .pdf-ollama-translator-popup__body {
+	display: none;
+}
+
 .pdf-ollama-translator-popup__header {
 	display: flex;
 	align-items: center;
@@ -136,6 +146,24 @@
 
 .pdf-ollama-translator-popup__error {
 	color: var(--text-error);
+}
+
+.pdf-ollama-translator-note-modal {
+	width: min(420px, calc(100vw - 24px));
+	border-radius: 8px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	box-shadow: var(--shadow-l);
+}
+
+.pdf-ollama-translator-note-modal .modal-content {
+	overflow-wrap: anywhere;
+}
+
+.pdf-ollama-translator-note-modal__actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
 }
 
 .pdf-ollama-translator-highlight-host {

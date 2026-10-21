@@ -21,8 +21,11 @@ interface PopupOptions {
 		targetLanguage: Exclude<TranslationLanguage, "auto">,
 	) => void;
 	onResize: (width: number, height: number) => void;
+	onTranslate: () => void;
 	onRetry: () => void;
 	onHighlight: () => void;
+	onAddNote: () => void;
+	onClose: () => void;
 }
 
 const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; label: string }> = [
@@ -52,6 +55,7 @@ export class TranslationPopup {
 	private options: PopupOptions;
 	private resizeObserver: ResizeObserver | null = null;
 	private resizeTimer: number | undefined;
+	private manualActionsOnly = false;
 
 	constructor(options: PopupOptions) {
 		this.options = options;
@@ -73,8 +77,8 @@ export class TranslationPopup {
 		this.options = options;
 		this.rootEl.style.setProperty("--pdf-ollama-translator-font-size", `${options.fontSize}px`);
 		this.rootEl.style.setProperty("--pdf-ollama-translator-line-height", String(options.lineHeight));
-		this.rootEl.style.width = `${options.width}px`;
-		this.rootEl.style.height = `${this.getPreferredHeight(options.height)}px`;
+		this.rootEl.style.width = this.manualActionsOnly ? "max-content" : `${options.width}px`;
+		this.rootEl.style.height = this.manualActionsOnly ? "auto" : `${this.getPreferredHeight(options.height)}px`;
 		this.renderLanguageControls();
 		this.renderActions();
 		if (this.lastRect) {
@@ -82,34 +86,51 @@ export class TranslationPopup {
 		}
 	}
 
-	showLoading(rect: DOMRect): void {
+	showLoading(rect: DOMRect, document: Document = activeDocument): void {
 		this.lastResult = "";
 		this.render("loading", t("popup.translating"));
-		this.showAt(rect);
+		this.showAt(rect, document);
 	}
 
-	showResult(result: TranslationResult, rect: DOMRect): void {
+	showResult(result: TranslationResult, rect: DOMRect, document: Document = activeDocument): void {
 		this.lastResult = result.translatedText;
 		this.render("success", result.translatedText);
-		this.showAt(rect);
+		this.showAt(rect, document);
 		this.fitToContent();
 	}
 
-	showError(message: string, rect: DOMRect): void {
+	showError(message: string, rect: DOMRect, document: Document = activeDocument): void {
 		this.lastResult = "";
 		this.render("error", message);
-		this.showAt(rect);
+		this.showAt(rect, document);
 	}
 
-	showInfo(message: string, rect: DOMRect): void {
+	showInfo(message: string, rect: DOMRect, document: Document = activeDocument): void {
 		this.lastResult = "";
 		this.render("error", message);
-		this.showAt(rect);
+		this.showAt(rect, document);
+	}
+
+	showManualActions(rect: DOMRect, document: Document = activeDocument): void {
+		this.lastResult = "";
+		this.setManualActionsOnly(true);
+		this.showAt(rect, document);
 	}
 
 	hide(): void {
 		this.lastRect = null;
 		this.rootEl.hide();
+	}
+
+	moveTo(document: Document): void {
+		if (this.rootEl.ownerDocument !== document) {
+			this.hide();
+			document.body.appendChild(this.rootEl);
+		}
+	}
+
+	onDocumentClosed(document: Document): void {
+		if (this.rootEl.ownerDocument === document) this.moveTo(window.document);
 	}
 
 	reposition(): void {
@@ -120,7 +141,7 @@ export class TranslationPopup {
 	}
 
 	containsTarget(target: EventTarget | null): boolean {
-		return target instanceof Node && this.rootEl.contains(target);
+		return Boolean(target && typeof target === "object" && "nodeType" in target && this.rootEl.contains(target as Node));
 	}
 
 	destroy(): void {
@@ -130,6 +151,7 @@ export class TranslationPopup {
 	}
 
 	private render(state: PopupState, content: string): void {
+		this.setManualActionsOnly(false);
 		this.resultEl.setText(content);
 		this.resultEl.toggleClass("pdf-ollama-translator-popup__status", state === "loading");
 		this.resultEl.toggleClass("pdf-ollama-translator-popup__error", state === "error");
@@ -145,6 +167,10 @@ export class TranslationPopup {
 				await navigator.clipboard.writeText(this.lastResult);
 			});
 		}
+		if (this.lastResult) {
+			const noteButton = this.createIconButton("file-plus", t("popup.addToNote"));
+			noteButton.onClickEvent(() => this.options.onAddNote());
+		}
 
 		const highlightColor = getHighlightColor(this.options.defaultHighlightColor);
 		const highlightButton = this.createIconButton("highlighter", t("popup.highlightSelection"));
@@ -158,18 +184,28 @@ export class TranslationPopup {
 		}
 
 		const closeButton = this.createIconButton("x", t("popup.close"));
-		closeButton.onClickEvent(() => this.hide());
+		closeButton.onClickEvent(() => this.options.onClose());
 	}
 
 	private renderLanguageControls(): void {
 		this.languageEl.empty();
+		if (this.manualActionsOnly) {
+			const button = this.languageEl.createEl("button", {
+				cls: "pdf-ollama-translator-popup__button",
+				attr: { "aria-label": t("popup.translateSelection"), title: t("popup.translateSelection") },
+			});
+			setIcon(button, "languages");
+			button.onpointerdown = (event) => event.preventDefault();
+			button.onClickEvent(() => this.options.onTranslate());
+			return;
+		}
 
 		const sourceSelect = this.languageEl.createEl("select", {
 			cls: "pdf-ollama-translator-popup__language-select",
 			attr: { "aria-label": t("popup.sourceLanguage"), title: t("popup.sourceLanguage") },
 		});
 		for (const option of SOURCE_LANGUAGE_OPTIONS) {
-			sourceSelect.createEl("option", { text: option.label, value: option.value });
+			sourceSelect.createEl("option", { text: option.value === "auto" ? t("language.autoShort") : option.label, value: option.value });
 		}
 		sourceSelect.value = this.options.sourceLanguage;
 
@@ -221,13 +257,26 @@ export class TranslationPopup {
 		return button;
 	}
 
-	private showAt(rect: DOMRect): void {
+	private setManualActionsOnly(value: boolean): void {
+		if (this.manualActionsOnly === value) return;
+		this.manualActionsOnly = value;
+		this.rootEl.toggleClass("pdf-ollama-translator-popup--actions-only", value);
+		this.rootEl.style.width = value ? "max-content" : `${this.options.width}px`;
+		this.rootEl.style.height = value ? "auto" : `${this.getPreferredHeight(this.options.height)}px`;
+		if (value) window.clearTimeout(this.resizeTimer);
+		this.renderLanguageControls();
+		this.renderActions();
+	}
+
+	private showAt(rect: DOMRect, document: Document): void {
+		this.moveTo(document);
 		this.lastRect = rect;
 		this.rootEl.show();
 		this.positionNear(rect);
 	}
 
 	private positionNear(rect: DOMRect): void {
+		const window = this.rootEl.ownerDocument.defaultView ?? activeWindow;
 		const margin = 12;
 		const popupRect = this.rootEl.getBoundingClientRect();
 		const desiredLeft = rect.left;
@@ -242,6 +291,7 @@ export class TranslationPopup {
 	}
 
 	private fitToContent(): void {
+		const window = this.rootEl.ownerDocument.defaultView ?? activeWindow;
 		const margin = 12;
 		const maxHeight = window.innerHeight - margin * 2;
 		const headerHeight = this.languageEl.parentElement?.getBoundingClientRect().height ?? 32;
@@ -250,7 +300,7 @@ export class TranslationPopup {
 			return;
 		}
 
-		const bodyStyle = getComputedStyle(bodyEl);
+		const bodyStyle = window.getComputedStyle(bodyEl);
 		const verticalBodySpace =
 			Number.parseFloat(bodyStyle.paddingTop) +
 			Number.parseFloat(bodyStyle.paddingBottom) +
@@ -259,7 +309,7 @@ export class TranslationPopup {
 		const contentHeight = this.resultEl.scrollHeight + headerHeight + verticalBodySpace + 2;
 		const nextHeight = clamp(
 			Math.ceil(contentHeight),
-			Number.parseFloat(getComputedStyle(this.rootEl).minHeight) || 150,
+			Number.parseFloat(window.getComputedStyle(this.rootEl).minHeight) || 150,
 			maxHeight,
 		);
 
@@ -270,13 +320,14 @@ export class TranslationPopup {
 	}
 
 	private getPreferredHeight(savedHeight: number): number {
-		const minHeight = Number.parseFloat(getComputedStyle(this.rootEl).minHeight) || 150;
+		const window = this.rootEl.ownerDocument.defaultView ?? activeWindow;
+		const minHeight = Number.parseFloat(window.getComputedStyle(this.rootEl).minHeight) || 150;
 		const maxHeight = window.innerHeight - 24;
 		return clamp(savedHeight, minHeight, Math.max(minHeight, maxHeight));
 	}
 
 	private handleResize(): void {
-		if (!this.options.rememberSize || this.rootEl.style.display === "none") {
+		if (this.manualActionsOnly || !this.options.rememberSize || this.rootEl.style.display === "none") {
 			return;
 		}
 

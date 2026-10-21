@@ -25,6 +25,8 @@ export class PdfHighlightService {
 	private pendingRemovals = new Map<string, HighlightEntry>();
 	private hydratedFiles = new Set<string>();
 	private hydratingFiles = new Set<string>();
+	private fileRevisions = new Map<string, number>();
+	private noteConflicts = new Set<string>();
 	private lastPdfFile: TFile | null = null;
 	private lastEntryKey = "";
 
@@ -47,6 +49,10 @@ export class PdfHighlightService {
 	async toggleSelectionHighlight(selection: PdfTextSelection, colorId: HighlightColorId): Promise<void> {
 		if (!selection.file || !selection.file.path.toLowerCase().endsWith(".pdf")) {
 			new Notice(t("notice.highlightPdfOnly"));
+			return;
+		}
+		if (this.noteConflicts.has(selection.file.path)) {
+			new Notice(t("notice.pdfNoteConflict"));
 			return;
 		}
 
@@ -91,6 +97,14 @@ export class PdfHighlightService {
 		this.overlay.render(key, selection, color, entry.note, (note, flush) => this.updateNote(key, note, flush));
 	}
 
+	async getSelectionHighlightColor(selection: PdfTextSelection): Promise<HighlightColorId | null> {
+		if (!selection.file?.path.toLowerCase().endsWith(".pdf")) return null;
+		const location = await this.locator.locate(
+			selection.file, selection.text, selection.pageHint, selection.overlayRects,
+		);
+		return location ? this.writer.getHighlightColor(location) : null;
+	}
+
 	canUndoSelection(selection: PdfTextSelection | null): boolean {
 		const entry = this.entries.get(this.lastEntryKey);
 		if (!entry?.selection?.file || !selection?.file) {
@@ -105,6 +119,10 @@ export class PdfHighlightService {
 	undoLastHighlight(): boolean {
 		const entry = this.entries.get(this.lastEntryKey);
 		if (!entry) {
+			return false;
+		}
+		if (this.noteConflicts.has(entry.location.file.path)) {
+			new Notice(t("notice.pdfNoteConflictWriteBlocked"));
 			return false;
 		}
 		this.removeEntry(entry, true);
@@ -156,6 +174,25 @@ export class PdfHighlightService {
 		}
 	}
 
+	async handleVaultModify(file: TFile): Promise<void> {
+		if (!file.path.toLowerCase().endsWith(".pdf") || await this.writer.isOwnWrite(file)) return;
+		this.fileRevisions.set(file.path, (this.fileRevisions.get(file.path) ?? 0) + 1);
+		const hasLocalChanges = [...this.entries.values()].some((entry) => entry.location.file.path === file.path && !entry.persisted)
+			|| [...this.pendingRemovals.values()].some((entry) => entry.location.file.path === file.path);
+		if (hasLocalChanges) {
+			this.noteConflicts.add(file.path);
+			new Notice(t("notice.pdfNoteConflict"));
+		}
+		for (const entry of [...this.entries.values()]) {
+			if (entry.location.file.path === file.path && entry.persisted) {
+				this.overlay.remove(entry.key);
+				this.entries.delete(entry.key);
+			}
+		}
+		this.hydratedFiles.delete(file.path);
+		if (this.isFileOpen(file.path) && !this.hydratingFiles.has(file.path)) void this.hydrateFile(file);
+	}
+
 	hasPdfForClear(): boolean {
 		return this.getPdfForClear() !== null;
 	}
@@ -165,19 +202,20 @@ export class PdfHighlightService {
 		if (!file) {
 			return null;
 		}
+		if (this.noteConflicts.has(file.path)) {
+			new Notice(t("notice.pdfNoteConflictWriteBlocked"));
+			return 0;
+		}
 
+		const removed = await this.writer.removeAllHighlights(file);
 		for (const entry of [...this.entries.values()]) {
-			if (entry.location.file.path === file.path) {
-				this.removeEntry(entry, false);
-			}
+			if (entry.location.file.path === file.path) this.removeEntry(entry, false);
 		}
 		for (const [key, entry] of this.pendingRemovals) {
-			if (entry.location.file.path === file.path) {
-				this.pendingRemovals.delete(key);
-			}
+			if (entry.location.file.path === file.path) this.pendingRemovals.delete(key);
 		}
+		this.noteConflicts.delete(file.path);
 		this.hydratedFiles.add(file.path);
-		const removed = await this.writer.removeAllHighlights(file);
 		if (removed > 0) {
 			await this.reloadPdfViews(file);
 		}
@@ -204,6 +242,10 @@ export class PdfHighlightService {
 	}
 
 	private async persist(entry: HighlightEntry): Promise<void> {
+		if (this.noteConflicts.has(entry.location.file.path)) {
+			new Notice(t("notice.pdfNoteConflictWriteBlocked"));
+			return;
+		}
 		const note = entry.note;
 		await this.writer.applyHighlight(entry.location, entry.color, note);
 		const current = this.entries.get(entry.key);
@@ -217,6 +259,10 @@ export class PdfHighlightService {
 	}
 
 	private async removePersisted(key: string, entry: HighlightEntry): Promise<void> {
+		if (this.noteConflicts.has(entry.location.file.path)) {
+			new Notice(t("notice.pdfNoteConflictWriteBlocked"));
+			return;
+		}
 		await this.writer.removeHighlight(entry.location);
 		this.pendingRemovals.delete(key);
 	}
@@ -254,19 +300,22 @@ export class PdfHighlightService {
 
 	private async hydrateFile(file: TFile): Promise<void> {
 		this.hydratingFiles.add(file.path);
+		const revision = this.fileRevisions.get(file.path) ?? 0;
 		try {
 			const highlights = await this.writer.readHighlights(file);
+			await this.locator.restoreOverlayRects(file, highlights);
+			if (revision !== (this.fileRevisions.get(file.path) ?? 0)) return;
 			for (const highlight of highlights) {
-				if (this.entries.has(highlight.id)) {
-					continue;
-				}
-				this.renderPersistedHighlight(highlight);
+				if (!this.entries.has(highlight.id)) this.renderPersistedHighlight(highlight);
 			}
 			this.hydratedFiles.add(file.path);
 		} catch (error) {
 			this.debug("Could not restore PDF highlight notes.", error);
 		} finally {
 			this.hydratingFiles.delete(file.path);
+			if (revision !== (this.fileRevisions.get(file.path) ?? 0) && this.isFileOpen(file.path)) {
+				void this.hydrateFile(file);
+			}
 		}
 	}
 

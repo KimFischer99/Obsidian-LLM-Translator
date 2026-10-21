@@ -10,6 +10,7 @@ export interface PdfOllamaTranslatorSettings {
 	cloudApiModel: string;
 	autoTranslateSelection: boolean;
 	enablePopup: boolean;
+	noteTargetPath: string;
 	restrictSourceLanguages: boolean;
 	sourceLanguage: TranslationLanguage;
 	targetLanguage: Exclude<TranslationLanguage, "auto">;
@@ -58,6 +59,7 @@ export interface TranslationResult {
 export interface PdfTextSelection {
 	text: string;
 	rect: DOMRect;
+	document?: Document;
 	file?: TFile;
 	pageHint?: number;
 	overlayRects?: PdfSelectionOverlayRect[];

@@ -47,7 +47,7 @@ export class PdfSelectionReader {
 		private debug: (message: string, detail?: unknown) => void,
 	) {}
 
-	readSelection(): PdfTextSelection | null {
+	readSelection(document: Document = activeDocument): PdfTextSelection | null {
 		const settings = this.getSettings();
 		const activeContext = settings.translationScope === "global"
 			? this.getActiveContainer()
@@ -56,7 +56,7 @@ export class PdfSelectionReader {
 			return null;
 		}
 
-		const selectionContext = this.getSelectionContext(activeContext.container);
+		const selectionContext = this.getSelectionContext(activeContext.container, document);
 		if (!selectionContext) {
 			return null;
 		}
@@ -76,6 +76,7 @@ export class PdfSelectionReader {
 			return rect ? {
 				text,
 				rect,
+				document,
 				file: activeContext.file ?? undefined,
 				pageHint: selectionContext.pageHint,
 				overlayRects: this.getSelectionOverlayRects(selection),
@@ -91,6 +92,7 @@ export class PdfSelectionReader {
 		return rect ? {
 			text,
 			rect,
+			document,
 			file: activeContext.file ?? undefined,
 			pageHint: selectionContext.pageHint,
 			overlayRects: this.getSelectionOverlayRects(selection),
@@ -157,8 +159,8 @@ export class PdfSelectionReader {
 		return PDF_CONTAINER_SELECTORS.some((selector) => view.containerEl.querySelector(selector));
 	}
 
-	private getSelectionContext(container: HTMLElement): SelectionWithContext | null {
-		const documentSelection = activeDocument.getSelection();
+	private getSelectionContext(container: HTMLElement, document: Document): SelectionWithContext | null {
+		const documentSelection = document.getSelection();
 		if (
 			documentSelection &&
 			documentSelection.rangeCount > 0 &&

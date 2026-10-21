@@ -10,6 +10,7 @@ const SIDEBAR_SPLIT_CLASS = "pdf-ollama-translator-sidebar-split";
 
 export class PdfOllamaTranslatorSidebarView extends ItemView {
 	private sourceInputEl: HTMLTextAreaElement | null = null;
+	private resultOutputEl: HTMLElement | null = null;
 	private sidebarLeafEl: HTMLElement | null = null;
 	private sidebarSplitEl: HTMLElement | null = null;
 
@@ -43,6 +44,7 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 		this.sidebarLeafEl = null;
 		this.sidebarSplitEl = null;
 		this.sourceInputEl = null;
+		this.resultOutputEl = null;
 	}
 
 	refresh(): void {
@@ -77,18 +79,20 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 		const rowEl = container.createDiv({ cls: "pdf-ollama-translator-sidebar__service-row" });
 		const providerEl = rowEl.createEl("select", {
 			cls: "pdf-ollama-translator-sidebar__select",
-			attr: { title: this.plugin.getActiveProviderLabel(), "aria-label": t("sidebar.translationService") },
+			attr: { "aria-label": t("sidebar.translationService") },
 		});
 		for (const option of [
-			{ value: "local-llm", label: "Local LLM" },
-			{ value: "cloud-api", label: "Cloud API" },
+			{ value: "local-llm", label: t("provider.localLlm") },
+			{ value: "cloud-api", label: t("provider.cloudApi") },
 			{ value: "google", label: "Google" },
 			{ value: "bing", label: "Bing" },
 		]) {
 			providerEl.createEl("option", { text: option.label, value: option.value });
 		}
 		providerEl.value = this.plugin.settings.translationProvider;
+		providerEl.title = providerEl.selectedOptions[0]?.text ?? "";
 		providerEl.onchange = () => {
+			providerEl.title = providerEl.selectedOptions[0]?.text ?? "";
 			void this.plugin.updateSettings({ translationProvider: providerEl.value as TranslationProviderId });
 		};
 
@@ -120,12 +124,12 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 		const rowEl = container.createDiv({ cls: "pdf-ollama-translator-sidebar__language-row" });
 		const sourceEl = rowEl.createEl("select", { cls: "pdf-ollama-translator-sidebar__select" });
 		for (const option of [
-			{ value: "auto", label: "Auto" },
-			{ value: "en", label: "English" },
-			{ value: "de", label: "Deutsch" },
-			{ value: "fr", label: "Français" },
-			{ value: "ja", label: "日本語" },
-			{ value: "zh-Hans", label: "简体中文" },
+			{ value: "auto", label: t("language.auto") },
+			{ value: "en", label: t("language.english") },
+			{ value: "de", label: t("language.german") },
+			{ value: "fr", label: t("language.french") },
+			{ value: "ja", label: t("language.japanese") },
+			{ value: "zh-Hans", label: t("language.chinese") },
 		]) {
 			sourceEl.createEl("option", { text: option.label, value: option.value });
 		}
@@ -143,11 +147,11 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 
 		const targetEl = rowEl.createEl("select", { cls: "pdf-ollama-translator-sidebar__select" });
 		for (const option of [
-			{ value: "en", label: "English" },
-			{ value: "de", label: "Deutsch" },
-			{ value: "fr", label: "Français" },
-			{ value: "ja", label: "日本語" },
-			{ value: "zh-Hans", label: "简体中文" },
+			{ value: "en", label: t("language.english") },
+			{ value: "de", label: t("language.german") },
+			{ value: "fr", label: t("language.french") },
+			{ value: "ja", label: t("language.japanese") },
+			{ value: "zh-Hans", label: t("language.chinese") },
 		]) {
 			targetEl.createEl("option", { text: option.label, value: option.value });
 		}
@@ -157,7 +161,10 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 				targetLanguage: targetEl.value as Exclude<TranslationLanguage, "auto">,
 			});
 		};
-		swapButton.onClickEvent(() => {
+		swapButton.onClickEvent(async () => {
+			if (!this.sourceInputEl) return;
+			const sourceText = this.sourceInputEl.value;
+			const sourceRect = this.sourceInputEl.getBoundingClientRect();
 			if (sourceEl.value === "auto") {
 				sourceEl.value = targetEl.value;
 				targetEl.value = this.plugin.settings.targetLanguage;
@@ -166,11 +173,11 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 				sourceEl.value = targetEl.value;
 				targetEl.value = previousSource;
 			}
-			void this.plugin.updateSettings({
+			await this.plugin.updateSettings({
 				sourceLanguage: sourceEl.value as TranslationLanguage,
 				targetLanguage: targetEl.value as Exclude<TranslationLanguage, "auto">,
 			});
-			void this.plugin.translateActiveSelectionFromSidebar();
+			await this.plugin.translateSidebarText(sourceText, sourceRect);
 		});
 	}
 
@@ -188,6 +195,7 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 		sourceEl.value = state.sourceText;
 
 		const resultEl = container.createDiv({ cls: "pdf-ollama-translator-sidebar__panel pdf-ollama-translator-sidebar__panel--result" });
+		this.resultOutputEl = resultEl;
 		if (state.status === "loading") {
 			resultEl.setText(t("sidebar.translating"));
 		} else if (state.status === "error") {
@@ -196,11 +204,19 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 		} else {
 			resultEl.setText(state.translatedText || t("sidebar.translation"));
 			resultEl.toggleClass("is-placeholder", !state.translatedText);
+			if (state.status === "success") {
+				resultEl.contentEditable = "true";
+				resultEl.setAttribute("role", "textbox");
+				resultEl.setAttribute("aria-label", t("sidebar.translation"));
+				resultEl.setAttribute("aria-multiline", "true");
+				resultEl.oninput = () => this.plugin.setSidebarTranslatedText(resultEl.innerText);
+			}
 		}
 
 		sourceEl.oninput = () => {
 			this.plugin.setSidebarSourceText(sourceEl.value);
 			resultEl.setText(t("sidebar.translation"));
+			resultEl.contentEditable = "false";
 			resultEl.removeClass("is-error");
 			resultEl.addClass("is-placeholder");
 		};
@@ -249,6 +265,15 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 		const copyActionsEl = copyRowEl.createDiv({
 			cls: "pdf-ollama-translator-sidebar__control-actions pdf-ollama-translator-sidebar__copy-actions",
 		});
+		const addToNoteButton = copyActionsEl.createEl("button", {
+			text: t("sidebar.note"),
+			cls: "pdf-ollama-translator-sidebar__copy-button",
+			attr: { title: t("sidebar.addToNote"), "aria-label": t("sidebar.addToNote") },
+		});
+		addToNoteButton.onClickEvent(() => void this.plugin.addSidebarTranslationToNote(
+			this.sourceInputEl?.value ?? "",
+			this.resultOutputEl?.innerText ?? "",
+		));
 		for (const item of [
 			{ label: t("sidebar.raw"), action: () => this.plugin.copySidebarText("raw") },
 			{ label: t("sidebar.result"), action: () => this.plugin.copySidebarText("result") },
@@ -272,12 +297,13 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 
 		for (const colorId of HIGHLIGHT_COLOR_ORDER) {
 			const color = getHighlightColor(colorId);
+			const colorLabel = t(`highlight.color.${colorId}`);
 			const button = paletteEl.createEl("button", {
 				cls: "pdf-ollama-translator-sidebar__highlight-swatch",
 				attr: {
-					"aria-label": color.label,
+					"aria-label": colorLabel,
 					"aria-pressed": String(this.plugin.settings.defaultHighlightColor === colorId),
-					title: color.label,
+					title: colorLabel,
 				},
 			});
 			button.style.setProperty("--pdf-ollama-translator-highlight-color", color.css);

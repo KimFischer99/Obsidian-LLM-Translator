@@ -549,7 +549,7 @@ export class HighlightOverlay {
 		this.editorEl.hide();
 		this.textareaEl = this.editorEl.createEl("textarea", {
 			cls: "pdf-ollama-translator-highlight-note-editor__textarea",
-			attr: { placeholder: "Add note" },
+			attr: { placeholder: t("highlight.addNote") },
 		});
 		const footerEl = this.editorEl.createDiv({ cls: "pdf-ollama-translator-highlight-note-editor__footer" });
 		const copyButton = footerEl.createEl("button", {

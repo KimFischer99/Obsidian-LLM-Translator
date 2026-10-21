@@ -2,7 +2,7 @@ import type { App, TFile } from "obsidian";
 import pdfWorkerSource from "pdfjs-dist/legacy/build/pdf.worker.mjs?worker-source";
 import type { PdfSelectionOverlayRect } from "../types";
 import { normalizePdfChars, normalizeSelectionTextForPdf, toRawPdfChars } from "./normalize";
-import type { LocatedPdfHighlight, PdfCharBox, PdfHighlightQuad } from "./types";
+import type { LocatedPdfHighlight, PdfCharBox, PdfHighlightQuad, PersistedPdfHighlight } from "./types";
 
 interface PdfTextItem {
 	str: string;
@@ -34,6 +34,7 @@ interface PdfViewportLike {
 	width: number;
 	height: number;
 	convertToViewportRectangle(rect: number[]): number[];
+	convertToPdfPoint(x: number, y: number): number[];
 }
 
 export class PdfTextLocator {
@@ -111,6 +112,41 @@ export class PdfTextLocator {
 		}
 	}
 
+	async restoreOverlayRects(file: TFile, highlights: PersistedPdfHighlight[]): Promise<void> {
+		if (highlights.length === 0) return;
+		const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+		pdfjsLib.GlobalWorkerOptions.workerSrc = this.getWorkerUrl();
+		const data = await this.app.vault.readBinary(file);
+		const pdfDoc = await pdfjsLib.getDocument({
+			data: data.slice(0),
+			useWorkerFetch: false,
+			isEvalSupported: false,
+		} as Record<string, unknown>).promise;
+		try {
+			for (const highlight of highlights) {
+				const overlays: PersistedPdfHighlight["overlayRects"] = [];
+				for (const quad of highlight.location.quads) {
+					const viewport = (await pdfDoc.getPage(quad.pageIndex + 1)).getViewport({ scale: 1 }) as PdfViewportLike;
+					const converted = viewport.convertToViewportRectangle(quad.rect);
+					const left = Math.min(converted[0], converted[2]);
+					const top = Math.min(converted[1], converted[3]);
+					const right = Math.max(converted[0], converted[2]);
+					const bottom = Math.max(converted[1], converted[3]);
+					overlays.push({
+						pageNumber: quad.pageIndex + 1,
+						leftRatio: left / viewport.width,
+						topRatio: top / viewport.height,
+						widthRatio: (right - left) / viewport.width,
+						heightRatio: (bottom - top) / viewport.height,
+					});
+				}
+				highlight.overlayRects = overlays;
+			}
+		} finally {
+			await (pdfDoc as { destroy?: () => Promise<void> }).destroy?.();
+		}
+	}
+
 	destroy(): void {
 		if (this.workerUrl) {
 			URL.revokeObjectURL(this.workerUrl);
@@ -157,7 +193,7 @@ export class PdfTextLocator {
 			end: start + selectedText.length,
 			matchType: "exact",
 			normalizedRects: [],
-			viewport: { width: 0, height: 0, convertToViewportRectangle: () => [] },
+			viewport: { width: 0, height: 0, convertToViewportRectangle: () => [], convertToPdfPoint: () => [] },
 		}));
 		if (exactMatches.length > 0) {
 			return exactMatches;
@@ -171,7 +207,7 @@ export class PdfTextLocator {
 			end: compactMatch.end,
 			matchType: "compact",
 			normalizedRects: [],
-			viewport: { width: 0, height: 0, convertToViewportRectangle: () => [] },
+			viewport: { width: 0, height: 0, convertToViewportRectangle: () => [], convertToPdfPoint: () => [] },
 		}));
 	}
 }
@@ -306,12 +342,21 @@ function buildOverlayQuads(
 		.map((rect): PdfHighlightQuad => {
 			const left = rect.leftRatio * match.viewport.width;
 			const right = (rect.leftRatio + rect.widthRatio) * match.viewport.width;
-			const top = (1 - rect.topRatio) * match.viewport.height;
-			const bottom = (1 - rect.topRatio - rect.heightRatio) * match.viewport.height;
+			const top = rect.topRatio * match.viewport.height;
+			const bottom = (rect.topRatio + rect.heightRatio) * match.viewport.height;
+			const points = [
+				match.viewport.convertToPdfPoint(left, top),
+				match.viewport.convertToPdfPoint(right, top),
+				match.viewport.convertToPdfPoint(left, bottom),
+				match.viewport.convertToPdfPoint(right, bottom),
+			];
+			const xs = points.map(([x]) => x);
+			const ys = points.map(([, y]) => y);
+			const rectPdf: PdfHighlightQuad["rect"] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
 			return {
 				pageIndex: match.pageIndex,
-				quadPoints: [left, top, right, top, left, bottom, right, bottom],
-				rect: [left, bottom, right, top],
+				quadPoints: points.flatMap(([x, y]) => [x, y]) as PdfHighlightQuad["quadPoints"],
+				rect: rectPdf,
 			};
 		})
 		.filter((quad) => quad.rect[2] > quad.rect[0] && quad.rect[3] > quad.rect[1]);

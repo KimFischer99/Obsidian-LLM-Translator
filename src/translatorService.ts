@@ -45,6 +45,7 @@ interface ScheduledTranslation {
 	resolve: (result: TranslationResult) => void;
 	reject: (error: unknown) => void;
 	queuedAbortListener?: () => void;
+	queuedTimeoutId?: number;
 }
 
 interface ProviderLane {
@@ -570,6 +571,12 @@ export class TranslatorService {
 				this.rejectQueuedTranslation(lane.pending, new TranslationCancelledError());
 			}
 			lane.pending = task;
+			task.queuedTimeoutId = window.setTimeout(() => {
+				if (lane?.pending === task) {
+					lane.pending = undefined;
+					this.rejectQueuedTranslation(task, new TranslationTimeoutError());
+				}
+			}, Math.max(1, this.getSettings().requestTimeoutMs));
 			if (request.signal) {
 				const onAbort = () => {
 					if (lane?.pending === task) {
@@ -585,6 +592,10 @@ export class TranslatorService {
 
 	private startScheduledTranslation(provider: TranslationProviderId, lane: ProviderLane, task: ScheduledTranslation): void {
 		lane.active = task;
+		if (task.queuedTimeoutId !== undefined) {
+			window.clearTimeout(task.queuedTimeoutId);
+			task.queuedTimeoutId = undefined;
+		}
 		if (task.queuedAbortListener && task.request.signal) {
 			task.request.signal.removeEventListener("abort", task.queuedAbortListener);
 			task.queuedAbortListener = undefined;
@@ -626,7 +637,11 @@ export class TranslatorService {
 		}
 	}
 
-	private rejectQueuedTranslation(task: ScheduledTranslation, error: TranslationCancelledError): void {
+	private rejectQueuedTranslation(task: ScheduledTranslation, error: TranslationCancelledError | TranslationTimeoutError): void {
+		if (task.queuedTimeoutId !== undefined) {
+			window.clearTimeout(task.queuedTimeoutId);
+			task.queuedTimeoutId = undefined;
+		}
 		if (task.queuedAbortListener && task.request.signal) {
 			task.request.signal.removeEventListener("abort", task.queuedAbortListener);
 			task.queuedAbortListener = undefined;
