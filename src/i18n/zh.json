@@ -1,6 +1,7 @@
 {
   "command": {
-    "openSidebar": "打开翻译侧栏"
+    "openSidebar": "打开翻译侧栏",
+    "translateSelection": "翻译当前选中文本"
   },
   "settings": {
     "section": {

@@ -1,6 +1,7 @@
 {
   "command": {
-    "openSidebar": "翻訳サイドバーを開く"
+    "openSidebar": "翻訳サイドバーを開く",
+    "translateSelection": "選択範囲を翻訳"
   },
   "settings": {
     "section": {

@@ -201,8 +201,34 @@ export class TranslationPopup {
 				attr: { "aria-label": t("popup.translateSelection"), title: t("popup.translateSelection") },
 			});
 			setIcon(button, "languages");
-			button.onpointerdown = (event) => event.preventDefault();
-			button.onClickEvent(() => this.options.onTranslate());
+			let pressed = false;
+			let fired = false;
+			const fire = () => {
+				if (fired) return;
+				fired = true;
+				// Defer so the rest of this pointer sequence (click) finishes before the popup re-renders.
+				window.setTimeout(() => this.options.onTranslate(), 0);
+			};
+			button.onpointerdown = (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				if (event.button === 0) pressed = true;
+			};
+			button.onpointerup = (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				if (pressed && event.button === 0) fire();
+				pressed = false;
+			};
+			button.onpointerleave = () => {
+				pressed = false;
+			};
+			// Keyboard activation (Enter/Space) and any environment where pointer events are unavailable.
+			button.onClickEvent((event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				fire();
+			});
 			return;
 		}
 

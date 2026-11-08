@@ -1,6 +1,7 @@
 {
   "command": {
-    "openSidebar": "Open translation sidebar"
+    "openSidebar": "Open translation sidebar",
+    "translateSelection": "Translate current selection"
   },
   "settings": {
     "section": {
