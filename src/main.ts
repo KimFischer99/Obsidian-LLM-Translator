@@ -638,7 +638,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 				text: selection.text,
 				sourceLanguage: this.settings.sourceLanguage,
 				targetLanguage: this.settings.targetLanguage,
-				allowedSourceLanguages: ["en", "de", "fr", "tr", "ja", "zh-Hans"],
+				allowedSourceLanguages: ["en", "de", "fr", "tr", "ja", "zh-Hans", "fa"],
 				signal: request.signal,
 			});
 			if (!request.signal.aborted) {

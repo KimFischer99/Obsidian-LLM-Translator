@@ -110,6 +110,7 @@ const LANGUAGE_NAMES: Record<TranslationLanguage, string> = {
 	tr: "Turkish",
 	ja: "Japanese",
 	"zh-Hans": "Simplified Chinese",
+	fa: "Persian (Farsi)",
 };
 
 export function getProviderLabel(provider: TranslationProviderId): string {
@@ -356,7 +357,7 @@ export class TranslatorService {
 					text: "Hello",
 					sourceLanguage: "en",
 					targetLanguage: "zh-Hans",
-					allowedSourceLanguages: ["en", "de", "fr", "tr", "ja", "zh-Hans"],
+					allowedSourceLanguages: ["en", "de", "fr", "tr", "ja", "zh-Hans", "fa"],
 				});
 				return { ok: true, message: t("error.connectionSuccess", { provider: getProviderLabel(provider), result: result.translatedText }) };
 			} catch (error) {

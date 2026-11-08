@@ -357,6 +357,10 @@ function isLikelySupportedSourceText(value: string, sourceLanguage: PdfOllamaTra
 		return /[\u3400-\u9fff]/.test(value);
 	}
 
+	if (sourceLanguage === "fa") {
+		return /[\u0600-\u06ff\u0750-\u077f\ufb50-\ufdff\ufe70-\ufeff]/.test(value);
+	}
+
 	if (sourceLanguage === "ja") {
 		return /[\u3040-\u30ff\u3400-\u9fff]/.test(value);
 	}
@@ -365,5 +369,5 @@ function isLikelySupportedSourceText(value: string, sourceLanguage: PdfOllamaTra
 		return /[A-Za-zÀ-ÖØ-öø-ÿĞğİıŞş]/.test(value);
 	}
 
-	return /[A-Za-zÀ-ÖØ-öø-ÿĞğİıŞş\u3040-\u30ff\u3400-\u9fff]/.test(value);
+	return /[A-Za-zÀ-ÖØ-öø-ÿĞğİıŞş\u3040-\u30ff\u3400-\u9fff\u0600-\u06ff]/.test(value);
 }
