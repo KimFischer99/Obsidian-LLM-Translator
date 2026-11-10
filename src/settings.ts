@@ -8,26 +8,26 @@ import { HIGHLIGHT_COLOR_ORDER } from "./pdfHighlight/colors";
 const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; labelKey: string }> = [
 	{ value: "auto", labelKey: "language.auto" },
 	{ value: "en", labelKey: "language.english" },
-	{ value: "de", labelKey: "language.german" },
 	{ value: "fr", labelKey: "language.french" },
-	{ value: "tr", labelKey: "language.turkish" },
+	{ value: "de", labelKey: "language.german" },
 	{ value: "ja", labelKey: "language.japanese" },
-	{ value: "zh-Hans", labelKey: "language.chinese" },
-	{ value: "fa", labelKey: "language.persian" },
-	{ value: "es", labelKey: "language.spanish" },
 	{ value: "ko", labelKey: "language.korean" },
+	{ value: "fa", labelKey: "language.persian" },
+	{ value: "zh-Hans", labelKey: "language.chinese" },
+	{ value: "es", labelKey: "language.spanish" },
+	{ value: "tr", labelKey: "language.turkish" },
 ];
 
 const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto">; labelKey: string }> = [
 	{ value: "en", labelKey: "language.english" },
-	{ value: "de", labelKey: "language.german" },
 	{ value: "fr", labelKey: "language.french" },
-	{ value: "tr", labelKey: "language.turkish" },
+	{ value: "de", labelKey: "language.german" },
 	{ value: "ja", labelKey: "language.japanese" },
-	{ value: "zh-Hans", labelKey: "language.chinese" },
-	{ value: "fa", labelKey: "language.persian" },
-	{ value: "es", labelKey: "language.spanish" },
 	{ value: "ko", labelKey: "language.korean" },
+	{ value: "fa", labelKey: "language.persian" },
+	{ value: "zh-Hans", labelKey: "language.chinese" },
+	{ value: "es", labelKey: "language.spanish" },
+	{ value: "tr", labelKey: "language.turkish" },
 ];
 
 export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {

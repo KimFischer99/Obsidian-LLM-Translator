@@ -98,17 +98,25 @@ test("manual bar translation remains in the popup when the sidebar is visible", 
 	state.isSidebarVisible = () => true;
 	state.updateSidebarState = () => undefined;
 	state.debug = () => undefined;
+	state.saveSettings = async () => undefined;
+	state.syncPopupOptions = () => undefined;
+	state.refreshSidebarViews = () => undefined;
 	const call = (name: string, ...args: unknown[]) => (state[name] as (...args: unknown[]) => unknown).apply(plugin, args);
 
 	call("scheduleSelectionTranslation", selection.document);
 	const pending = call("retryLastSelection") as Promise<void>;
 	assert.deepEqual(events, ["manual", "loading"]);
+	await plugin.updateSettings({ popupWidth: 400, popupHeight: 240 });
 	call("scheduleSelectionTranslation", selection.document);
 	assert.deepEqual(events, ["manual", "loading"]);
 	finishTranslation({ sourceText: selection.text, translatedText: "result text" });
 	await pending;
+	await plugin.updateSettings({ popupWidth: 400, popupHeight: 180, fontSize: 14 });
 	call("scheduleSelectionTranslation", selection.document);
 	assert.deepEqual(events, ["manual", "loading", "result"]);
+	await plugin.updateSettings({ targetLanguage: "ko" });
+	call("scheduleSelectionTranslation", selection.document);
+	assert.deepEqual(events, ["manual", "loading", "result", "manual"]);
 });
 
 test("disabling popup during a request keeps the completed result in the sidebar", async () => {

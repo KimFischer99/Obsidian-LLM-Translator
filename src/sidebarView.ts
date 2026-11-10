@@ -126,14 +126,14 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 		for (const option of [
 			{ value: "auto", label: t("language.auto") },
 			{ value: "en", label: t("language.english") },
-			{ value: "de", label: t("language.german") },
 			{ value: "fr", label: t("language.french") },
-			{ value: "tr", label: t("language.turkish") },
+			{ value: "de", label: t("language.german") },
 			{ value: "ja", label: t("language.japanese") },
-			{ value: "zh-Hans", label: t("language.chinese") },
-			{ value: "fa", label: t("language.persian") },
-			{ value: "es", label: t("language.spanish") },
 			{ value: "ko", label: t("language.korean") },
+			{ value: "fa", label: t("language.persian") },
+			{ value: "zh-Hans", label: t("language.chinese") },
+			{ value: "es", label: t("language.spanish") },
+			{ value: "tr", label: t("language.turkish") },
 		]) {
 			sourceEl.createEl("option", { text: option.label, value: option.value });
 		}
@@ -152,14 +152,14 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 		const targetEl = rowEl.createEl("select", { cls: "pdf-ollama-translator-sidebar__select" });
 		for (const option of [
 			{ value: "en", label: t("language.english") },
-			{ value: "de", label: t("language.german") },
 			{ value: "fr", label: t("language.french") },
-			{ value: "tr", label: t("language.turkish") },
+			{ value: "de", label: t("language.german") },
 			{ value: "ja", label: t("language.japanese") },
-			{ value: "zh-Hans", label: t("language.chinese") },
-			{ value: "fa", label: t("language.persian") },
-			{ value: "es", label: t("language.spanish") },
 			{ value: "ko", label: t("language.korean") },
+			{ value: "fa", label: t("language.persian") },
+			{ value: "zh-Hans", label: t("language.chinese") },
+			{ value: "es", label: t("language.spanish") },
+			{ value: "tr", label: t("language.turkish") },
 		]) {
 			targetEl.createEl("option", { text: option.label, value: option.value });
 		}

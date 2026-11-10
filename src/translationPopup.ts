@@ -32,26 +32,26 @@ interface PopupOptions {
 const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; label: string }> = [
 	{ value: "auto", label: "Auto" },
 	{ value: "en", label: "EN" },
-	{ value: "de", label: "DE" },
 	{ value: "fr", label: "FR" },
-	{ value: "tr", label: "TR" },
+	{ value: "de", label: "DE" },
 	{ value: "ja", label: "JA" },
-	{ value: "zh-Hans", label: "ZH" },
-	{ value: "fa", label: "FA" },
-	{ value: "es", label: "ES" },
 	{ value: "ko", label: "KO" },
+	{ value: "fa", label: "FA" },
+	{ value: "zh-Hans", label: "ZH" },
+	{ value: "es", label: "ES" },
+	{ value: "tr", label: "TR" },
 ];
 
 const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto">; label: string }> = [
 	{ value: "en", label: "EN" },
-	{ value: "de", label: "DE" },
 	{ value: "fr", label: "FR" },
-	{ value: "tr", label: "TR" },
+	{ value: "de", label: "DE" },
 	{ value: "ja", label: "JA" },
-	{ value: "zh-Hans", label: "ZH" },
-	{ value: "fa", label: "FA" },
-	{ value: "es", label: "ES" },
 	{ value: "ko", label: "KO" },
+	{ value: "fa", label: "FA" },
+	{ value: "zh-Hans", label: "ZH" },
+	{ value: "es", label: "ES" },
+	{ value: "tr", label: "TR" },
 ];
 
 export class TranslationPopup {

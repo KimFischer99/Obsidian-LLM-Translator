@@ -176,7 +176,15 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	}
 
 	async updateSettings(partial: Partial<PdfOllamaTranslatorSettings>): Promise<void> {
-		this.lastSelectionKey = "";
+		const translationKeys: Array<keyof PdfOllamaTranslatorSettings> = [
+			"sourceLanguage", "targetLanguage", "translationProvider", "translationScope",
+			"ollamaBaseUrl", "model", "cloudApiBaseUrl", "cloudApiModel", "cloudApiKeySecretId",
+			"customPrompt", "topK", "topP", "repeatPenalty", "numPredict", "ollamaOptionsJson",
+			"cleanModelOutput", "restrictSourceLanguages", "autoTranslateSelection", "maxSelectionChars", "requestTimeoutMs",
+		];
+		if (translationKeys.some((key) => key in partial && partial[key] !== this.settings[key])) {
+			this.lastSelectionKey = "";
+		}
 		this.settings = { ...this.settings, ...partial };
 		await this.saveSettings();
 		this.syncPopupOptions();
