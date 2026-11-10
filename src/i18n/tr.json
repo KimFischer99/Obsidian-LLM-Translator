@@ -1,6 +1,7 @@
 {
   "command": {
-    "openSidebar": "Çeviri kenar çubuğunu aç"
+    "openSidebar": "Çeviri kenar çubuğunu aç",
+    "translateSelection": "Seçimi çevir"
   },
   "settings": {
     "section": {

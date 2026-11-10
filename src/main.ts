@@ -128,8 +128,23 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			name: t("command.openSidebar"),
 			callback: () => void this.activateSidebarView(),
 		});
+		this.addCommand({
+			id: "translate-current-selection",
+			name: t("command.translateSelection"),
+			callback: () => void this.translateSelectionByCommand(),
+		});
 		this.registerSelectionEvents();
 		this.registerWorkspaceEvents();
+	}
+
+	private async translateSelectionByCommand(): Promise<void> {
+		const selection = this.selectionReader.readSelection() ?? this.lastSelection ?? this.lastDocumentSelection;
+		this.debug("Translate command.", { hasSelection: Boolean(selection) });
+		if (!selection) {
+			new Notice(t("notice.selectTextFirst"));
+			return;
+		}
+		await this.translateSelection(selection, true, true);
 	}
 
 	onunload(): void {
@@ -566,6 +581,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	}
 
 	private async retryLastSelection(): Promise<void> {
+		this.debug("Manual translate / retry requested.", { hasSelection: Boolean(this.lastSelection) });
 		if (!this.lastSelection) {
 			new Notice(t("notice.noSelectionToRetry"));
 			return;

@@ -1,6 +1,7 @@
 {
   "command": {
-    "openSidebar": "Übersetzungsseitenleiste öffnen"
+    "openSidebar": "Übersetzungsseitenleiste öffnen",
+    "translateSelection": "Aktuelle Auswahl übersetzen"
   },
   "settings": {
     "section": {

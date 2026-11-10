@@ -1,6 +1,7 @@
 {
   "command": {
-    "openSidebar": "Ouvrir le panneau de traduction"
+    "openSidebar": "Ouvrir le panneau de traduction",
+    "translateSelection": "Traduire la sélection"
   },
   "settings": {
     "section": {
