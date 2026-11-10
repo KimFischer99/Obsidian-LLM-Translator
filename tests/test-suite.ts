@@ -10,6 +10,7 @@ import { getHighlightColor } from "../src/pdfHighlight/colors";
 import type { LocatedPdfHighlight, PdfHighlightQuad } from "../src/pdfHighlight/types";
 import { normalizeSelectionTextForPdf } from "../src/pdfHighlight/normalize";
 import { appendTranslationNote } from "../src/noteExport";
+import { TranslationPopup } from "../src/translationPopup";
 import PdfOllamaTranslatorPlugin from "../src/main";
 import {
 	cleanModelOutput,
@@ -21,6 +22,7 @@ import {
 	TranslatorService,
 	truncateHttpErrorBody,
 } from "../src/translatorService";
+import { TranslationCache, buildCacheKey, normalizeCacheText } from "../src/translationCache";
 import type { PdfOllamaTranslatorSettings, TranslationRequest } from "../src/types";
 
 Object.defineProperty(globalThis, "window", { value: globalThis, configurable: true });
@@ -35,6 +37,8 @@ const SETTINGS: PdfOllamaTranslatorSettings = {
 	cloudApiModel: "test-cloud-model",
 	autoTranslateSelection: true,
 	enablePopup: true,
+	enableContextMenu: true,
+	enableTranslationCache: true,
 	restrictSourceLanguages: false,
 	sourceLanguage: "auto",
 	targetLanguage: "zh-Hans",
@@ -94,17 +98,25 @@ test("manual bar translation remains in the popup when the sidebar is visible", 
 	state.isSidebarVisible = () => true;
 	state.updateSidebarState = () => undefined;
 	state.debug = () => undefined;
+	state.saveSettings = async () => undefined;
+	state.syncPopupOptions = () => undefined;
+	state.refreshSidebarViews = () => undefined;
 	const call = (name: string, ...args: unknown[]) => (state[name] as (...args: unknown[]) => unknown).apply(plugin, args);
 
 	call("scheduleSelectionTranslation", selection.document);
 	const pending = call("retryLastSelection") as Promise<void>;
 	assert.deepEqual(events, ["manual", "loading"]);
+	await plugin.updateSettings({ popupWidth: 400, popupHeight: 240 });
 	call("scheduleSelectionTranslation", selection.document);
 	assert.deepEqual(events, ["manual", "loading"]);
 	finishTranslation({ sourceText: selection.text, translatedText: "result text" });
 	await pending;
+	await plugin.updateSettings({ popupWidth: 400, popupHeight: 180, fontSize: 14 });
 	call("scheduleSelectionTranslation", selection.document);
 	assert.deepEqual(events, ["manual", "loading", "result"]);
+	await plugin.updateSettings({ targetLanguage: "ko" });
+	call("scheduleSelectionTranslation", selection.document);
+	assert.deepEqual(events, ["manual", "loading", "result", "manual"]);
 });
 
 test("disabling popup during a request keeps the completed result in the sidebar", async () => {
@@ -462,6 +474,109 @@ test("sidebar bottom controls share one guarded left-aligned action column", asy
 	assert.doesNotMatch(styles, /\.pdf-ollama-translator-sidebar__copy-row\s*{[\s\S]*?repeat\(3, minmax\(0, 1fr\)\)/);
 });
 
+test("pdf context menu stays non-destructive and PDF++ compatible", async () => {
+	const [contextMenu, main] = await Promise.all([
+		readProjectFile("src/pdfContextMenu.ts"),
+		readProjectFile("src/main.ts"),
+	]);
+
+	const section = (from: string, to: string): string => {
+		const start = contextMenu.indexOf(from);
+		const end = contextMenu.indexOf(to);
+		assert.ok(start >= 0 && end > start, `could not slice ${from}..${to}`);
+		return contextMenu.slice(start, end);
+	};
+
+	// Assertions about forbidden calls must ignore prose, or a comment explaining
+	// why we avoid an API would fail the very check that guards it.
+	const stripComments = (source: string): string =>
+		source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+	const contextMenuCode = stripComments(contextMenu);
+
+	// The old implementation intercepted contextmenu on the parent document in
+	// the capture phase and stopped propagation, which erased every other
+	// plugin's menu items.
+	assert.doesNotMatch(main, /registerDomEvent\(\s*activeDocument\s*,\s*"contextmenu"/);
+	assert.doesNotMatch(main, /handleContextMenu/);
+	assert.doesNotMatch(contextMenuCode, /stopPropagation|stopImmediatePropagation/);
+	assert.doesNotMatch(contextMenuCode, /activeDocument/);
+
+	// Markdown keeps using the official event; PDF goes through `pdf-menu`.
+	assert.match(main, /this\.app\.workspace\.on\("editor-menu"/);
+	assert.match(contextMenu, /PDF_MENU_EVENT = "pdf-menu"/);
+	assert.match(contextMenu, /PDF_PLUS_ID = "pdf-plus"/);
+
+	// PDF++ detection must consult both the enabled set and the live instance;
+	// a stubbed-out check would silently make us fight PDF++ for the menu.
+	const detection = section("isPdfPlusEnabled(): boolean", "private scheduleRescan");
+	assert.match(detection, /enabledPlugins\?\.has\(PDF_PLUS_ID\)/);
+	assert.match(detection, /plugins\?\.\[PDF_PLUS_ID\]/);
+
+	// When PDF++ owns the menu we must not install a competing interceptor.
+	const rescan = section("private rescanPdfTargets", "private collectPdfTargets");
+	assert.match(rescan, /this\.isPdfPlusEnabled\(\)/);
+	assert.match(rescan, /this\.detachAll\(\)/);
+
+	// Obsidian's built-in PDF handler calls stopPropagation(), so a bubble-phase
+	// listener would never fire and the fallback menu would never appear. Both
+	// registration and removal must pass the capture flag.
+	assert.match(contextMenu, /addEventListener\("contextmenu", handler, true\)/);
+	assert.match(contextMenu, /removeEventListener\("contextmenu", entry\.handler, true\)/);
+
+	// The fallback must cover PDF views that are not inside an iframe, otherwise
+	// builds that render PDF.js straight into the leaf get no menu at all.
+	const collect = section("private collectPdfTargets", "private isPdfLeaf");
+	assert.match(collect, /querySelectorAll\("iframe"\)/);
+	assert.match(collect, /targets\.push\(container\)/);
+
+	// Deciding a leaf is a PDF must not rely on generic classes: matching `.page`
+	// in a Markdown view would attach the interceptor there and suppress its
+	// native menu — the exact bug this file exists to prevent.
+	assert.doesNotMatch(section("const PDF_VIEWER_MARKERS", "const PDF_PAGE_MARKERS"), /\.page|\.textLayer/);
+	assert.match(section("private isPdfLeaf", "private readFrameDocument"), /viewType === "pdf"/);
+
+	// The fallback interceptor must only broadcast: it adds no items itself (so
+	// our own broadcast cannot duplicate them), backs off when another handler
+	// already claimed the right-click, and re-checks PDF++ because enabling a
+	// plugin emits no layout event.
+	const interceptor = section("private handlePdfContextMenu", "private broadcastPdfMenu");
+	assert.doesNotMatch(interceptor, /menu\.addItem\(/);
+	assert.match(interceptor, /evt\.defaultPrevented/);
+	assert.match(interceptor, /this\.isPdfPlusEnabled\(\)/);
+	assert.match(interceptor, /this\.broadcastPdfMenu\(menu/);
+	// Suppress the built-in menu with preventDefault only, and only once we
+	// actually have items to show.
+	assert.match(interceptor, /if \(!added\)[\s\S]*?evt\.preventDefault\(\)/);
+	// This plugin's own highlight UI sits inside the page layer; right-clicking it
+	// must keep the native menu so copy/paste still works in the note editor.
+	assert.match(interceptor, /HIGHLIGHT_UI_MARKERS/);
+	assert.match(contextMenu, /HIGHLIGHT_UI_MARKERS =[\s\S]*?highlight-note-editor/);
+
+	// Captured geometry describing different text must not be reused, or a later
+	// highlight would land on the wrong words.
+	const capturedCode = stripComments(
+		main.slice(main.indexOf("async translateCapturedSelection"), main.indexOf("private getViewportCenterRect")),
+	);
+	assert.ok(capturedCode.length > 0, "could not slice translateCapturedSelection");
+	assert.doesNotMatch(capturedCode, /\.\.\.\(captured/);
+	assert.doesNotMatch(capturedCode, /overlayRects|pageHint/);
+
+	// Items come solely from the `pdf-menu` listener, registered exactly once.
+	assert.equal((contextMenu.match(/menu\.addItem\(/g) ?? []).length, 2);
+	assert.match(section("onPdfMenu(menu: Menu", "private scheduleRescan"), /menu\.addItem\(/);
+	assert.equal((contextMenu.match(/workspace\.on\(\s*PDF_MENU_EVENT/g) ?? []).length, 1);
+	assert.match(contextMenu, /private menuEventRef: EventRef \| null/);
+
+	// A third-party listener that throws must not cost us the menu, and item
+	// counting must not depend on Menu's private `items` field.
+	const broadcast = section("private broadcastPdfMenu", "private pruneDetachedTargets");
+	assert.match(broadcast, /catch \(error\)/);
+	assert.doesNotMatch(contextMenu, /\bmenu\.items\b|\{ items\?/);
+
+	// Realm hazard: the PDF iframe is a separate JS realm.
+	assert.doesNotMatch(contextMenu, /instanceof (?:Document|Node|Element)/);
+});
+
 test("build metadata describes one release version", async () => {
 	const [packageJson, manifest, packageLock, versions] = await Promise.all([
 		readProjectJson("package.json"),
@@ -469,7 +584,7 @@ test("build metadata describes one release version", async () => {
 		readProjectJson("package-lock.json"),
 		readProjectJson("versions.json"),
 	]);
-	assert.equal(packageJson.version, "0.5.2");
+	assert.equal(packageJson.version, "0.5.4");
 	assert.equal(manifest.version, packageJson.version);
 	assert.equal(packageLock.version, packageJson.version);
 	assert.equal(packageLock.packages[""].version, packageJson.version);
@@ -481,7 +596,7 @@ test("stored prompt follows the default prompt after the Turkish update", async 
 		+ " Preserve terminology, numbers, formulas, citations, and paragraph breaks. Output only the translation.";
 	const main = await readProjectFile("src/main.ts");
 
-	assert.match(DEFAULT_TRANSLATION_PROMPT, /English, German, French, Turkish, Japanese/);
+	assert.match(DEFAULT_TRANSLATION_PROMPT, /\{sourceLanguage\}.*\{targetLanguage\}/);
 	assert.equal(migrateTranslationPrompt(legacyPrompt), DEFAULT_TRANSLATION_PROMPT);
 	assert.equal(migrateTranslationPrompt(`  ${legacyPrompt.replace(/ /g, "   ")}\n`), DEFAULT_TRANSLATION_PROMPT);
 	assert.equal(migrateTranslationPrompt("Keep it short."), "Keep it short.");
@@ -497,6 +612,56 @@ test("note target row centers its label against the controls", async () => {
 
 	assert.match(settings, /\.setName\(t\("settings\.noteTarget"\)\)\s*\.setClass\("pdf-ollama-translator-setting--centered"\)/);
 	assert.match(styles, /\.pdf-ollama-translator-settings \.setting-item\.pdf-ollama-translator-setting--centered\s*{[^}]*align-items: center/);
+});
+
+test("cache keys isolate model and prompt configuration", () => {
+	const original = buildCacheKey("en", "fa", "Hello!", SETTINGS);
+	assert.notEqual(original, buildCacheKey("en", "fa", "Hello!", { ...SETTINGS, model: "new-model", customPrompt: "Formal tone." }));
+});
+
+test("cache normalization preserves punctuation", () => {
+	assert.equal(normalizeCacheText("  Hello?  "), "Hello?");
+	assert.notEqual(normalizeCacheText("Hello?"), normalizeCacheText("Hello!"));
+});
+
+test("translation cache misses before load, hits after set, and persists to disk", async () => {
+	const adapter = new MemoryCacheAdapter();
+	const cache = new TranslationCache(adapter, "cache.json");
+
+	// Not loaded yet: safe miss, never throws.
+	assert.equal(cache.get("en||zh-Hans||hello"), null);
+
+	await cache.load();
+	assert.equal(cache.get("en||zh-Hans||hello"), null);
+
+	cache.set("en||zh-Hans||hello", { translatedText: "你好", model: "test-model", timestamp: 1, version: 1 });
+	assert.equal(cache.get("en||zh-Hans||hello")?.translatedText, "你好");
+
+	await cache.flush();
+	const parsed = JSON.parse(adapter.files.get("cache.json")!) as Record<string, { translatedText: string; model: string }>;
+	assert.equal(parsed["en||zh-Hans||hello"].translatedText, "你好");
+	assert.equal(parsed["en||zh-Hans||hello"].model, "test-model");
+});
+
+test("translation cache tolerates corrupted files and serializes concurrent writes", async () => {
+	// Corrupted file: load must not throw, cache starts empty.
+	const badAdapter = new MemoryCacheAdapter();
+	badAdapter.files.set("cache.json", "not-json{{{");
+	const badCache = new TranslationCache(badAdapter, "cache.json");
+	await badCache.load();
+	assert.equal(badCache.get("en||zh-Hans||hello"), null);
+
+	// Concurrent writes: all entries present, last write wins per key.
+	const adapter = new MemoryCacheAdapter();
+	const cache = new TranslationCache(adapter, "cache.json");
+	await cache.load();
+	cache.set("en||zh-Hans||a", { translatedText: "A", model: "m", timestamp: 1, version: 1 });
+	cache.set("en||zh-Hans||b", { translatedText: "B", model: "m", timestamp: 1, version: 1 });
+	cache.set("en||zh-Hans||a", { translatedText: "A2", model: "m", timestamp: 1, version: 1 });
+	await cache.flush();
+	const parsed = JSON.parse(adapter.files.get("cache.json")!) as Record<string, { translatedText: string }>;
+	assert.equal(parsed["en||zh-Hans||a"].translatedText, "A2");
+	assert.equal(parsed["en||zh-Hans||b"].translatedText, "B");
 });
 
 class MemoryVault {
@@ -546,6 +711,18 @@ function noteApp(initial: Record<string, string> = {}, activeFile: TFile | null 
 	};
 }
 
+class MemoryCacheAdapter {
+	files = new Map<string, string>();
+
+	async read(path: string): Promise<string | null> {
+		return this.files.get(path) ?? null;
+	}
+
+	async write(path: string, data: string): Promise<void> {
+		this.files.set(path, data);
+	}
+}
+
 function quad(left: number, bottom: number, right: number, top: number): PdfHighlightQuad {
 	return {
 		pageIndex: 0,
@@ -583,3 +760,45 @@ function readProjectFile(filePath: string): Promise<string> {
 async function readProjectJson(filePath: string): Promise<Record<string, any>> {
 	return JSON.parse(await readProjectFile(filePath));
 }
+
+
+test("LLM request prompt follows the selected Spanish and Korean languages", async () => {
+	let prompt = "";
+	__setRequestUrl(async (params: { body: string }) => {
+		prompt = JSON.parse(params.body).messages[0].content;
+		return { status: 200, json: { message: { content: "안녕하세요" } } };
+	});
+	const service = new TranslatorService(() => ({ ...SETTINGS, customPrompt: DEFAULT_TRANSLATION_PROMPT }));
+	await service.translate({ text: "Hola", sourceLanguage: "es", targetLanguage: "ko", allowedSourceLanguages: ["es", "ko"] });
+	assert.match(prompt, /Translate from Spanish to Korean/);
+	assert.doesNotMatch(prompt, /\{sourceLanguage\}|\{targetLanguage\}/);
+});
+
+test("automatic Persian translation preserves custom prompt and resolves language placeholders", async () => {
+	let prompt = "";
+	__setRequestUrl(async (params: { body: string }) => {
+		prompt = JSON.parse(params.body).messages[0].content;
+		return { status: 200, json: { message: { content: "سلام" } } };
+	});
+	const service = new TranslatorService(() => ({ ...SETTINGS, customPrompt: "Formal tone for {targetLanguage}." }));
+	await service.translate({ text: "Hello", sourceLanguage: "auto", targetLanguage: "fa", allowedSourceLanguages: ["fa"] });
+	assert.match(prompt, /Formal tone for Persian \(Farsi\)/);
+	assert.match(prompt, /Source language: auto-detected language/);
+});
+
+test("manual translate pointerup and click trigger one deferred action", async () => {
+	const popup = Object.create(TranslationPopup.prototype) as unknown as Record<string, any>;
+	const button: Record<string, any> = { onClickEvent(handler: unknown) { this.click = handler; } };
+	let calls = 0;
+	popup.manualActionsOnly = true;
+	popup.languageEl = { empty() {}, createEl: () => button };
+	popup.options = { onTranslate: () => calls++ };
+	popup.renderLanguageControls();
+	const event = { button: 0, preventDefault() {}, stopPropagation() {} };
+	button.onpointerdown(event);
+	button.onpointerup(event);
+	button.click(event);
+	assert.equal(calls, 0);
+	await nextTask();
+	assert.equal(calls, 1);
+});

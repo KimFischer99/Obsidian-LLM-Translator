@@ -1,6 +1,7 @@
 {
   "command": {
-    "openSidebar": "Ouvrir le panneau de traduction"
+    "openSidebar": "Ouvrir le panneau de traduction",
+    "translateSelection": "Traduire la sélection"
   },
   "settings": {
     "section": {
@@ -51,7 +52,10 @@
     "repeatPenaltyDesc": "Réduit la probabilité de répétitions.",
     "numPredictDesc": "Nombre maximal de jetons générés par requête.",
     "test": "Tester",
-    "testing": "Test en cours..."
+    "testing": "Test en cours...",
+    "enableContextMenu": "Enable right-click translate",
+    "enableTranslationCache": "Cache translation results",
+    "enableTranslationCacheDesc": "Reuse the cached result for identical source text instead of calling the model again."
   },
   "sidebar": {
     "title": "Traduire",
@@ -114,7 +118,10 @@
     "french": "Français",
     "turkish": "Turc",
     "japanese": "Japonais",
-    "chinese": "Chinois simplifié"
+    "chinese": "Chinois simplifié",
+    "persian": "Persan",
+    "spanish": "Espagnol",
+    "korean": "Coréen"
   },
   "note": {
     "source": "Source",
@@ -173,5 +180,9 @@
     "connectionSuccess": "${provider} connecté : ${result}",
     "ollamaConnectedButModelNotFound": "Connexion à Ollama établie, mais modèle « ${model} » introuvable.",
     "modelAvailable": "Connexion réussie, le modèle « ${model} » est disponible."
+  },
+  "contextMenu": {
+    "translate": "Translate",
+    "copy": "Copy"
   }
 }

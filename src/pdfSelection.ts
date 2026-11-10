@@ -357,13 +357,21 @@ function isLikelySupportedSourceText(value: string, sourceLanguage: PdfOllamaTra
 		return /[\u3400-\u9fff]/.test(value);
 	}
 
+	if (sourceLanguage === "ko") {
+		return /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/.test(value);
+	}
+
+	if (sourceLanguage === "fa") {
+		return /[\u0600-\u06ff\u0750-\u077f\ufb50-\ufdff\ufe70-\ufeff]/.test(value);
+	}
+
 	if (sourceLanguage === "ja") {
 		return /[\u3040-\u30ff\u3400-\u9fff]/.test(value);
 	}
 
-	if (sourceLanguage === "en" || sourceLanguage === "de" || sourceLanguage === "fr" || sourceLanguage === "tr") {
+	if (sourceLanguage === "en" || sourceLanguage === "de" || sourceLanguage === "fr" || sourceLanguage === "tr" || sourceLanguage === "es") {
 		return /[A-Za-zÀ-ÖØ-öø-ÿĞğİıŞş]/.test(value);
 	}
 
-	return /[A-Za-zÀ-ÖØ-öø-ÿĞğİıŞş\u3040-\u30ff\u3400-\u9fff]/.test(value);
+	return /[A-Za-zÀ-ÖØ-öø-ÿĞğİıŞş\u3040-\u30ff\u3400-\u9fff\u0600-\u06ff\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/.test(value);
 }

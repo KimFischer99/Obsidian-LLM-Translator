@@ -32,20 +32,26 @@ interface PopupOptions {
 const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; label: string }> = [
 	{ value: "auto", label: "Auto" },
 	{ value: "en", label: "EN" },
-	{ value: "de", label: "DE" },
 	{ value: "fr", label: "FR" },
-	{ value: "tr", label: "TR" },
+	{ value: "de", label: "DE" },
 	{ value: "ja", label: "JA" },
+	{ value: "ko", label: "KO" },
+	{ value: "fa", label: "FA" },
 	{ value: "zh-Hans", label: "ZH" },
+	{ value: "es", label: "ES" },
+	{ value: "tr", label: "TR" },
 ];
 
 const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto">; label: string }> = [
 	{ value: "en", label: "EN" },
-	{ value: "de", label: "DE" },
 	{ value: "fr", label: "FR" },
-	{ value: "tr", label: "TR" },
+	{ value: "de", label: "DE" },
 	{ value: "ja", label: "JA" },
+	{ value: "ko", label: "KO" },
+	{ value: "fa", label: "FA" },
 	{ value: "zh-Hans", label: "ZH" },
+	{ value: "es", label: "ES" },
+	{ value: "tr", label: "TR" },
 ];
 
 export class TranslationPopup {
@@ -70,7 +76,7 @@ export class TranslationPopup {
 		this.actionsEl = headerEl.createDiv({ cls: "pdf-ollama-translator-popup__actions" });
 
 		const bodyEl = this.rootEl.createDiv({ cls: "pdf-ollama-translator-popup__body" });
-		this.resultEl = bodyEl.createDiv({ cls: "pdf-ollama-translator-popup__result" });
+		this.resultEl = bodyEl.createDiv({ cls: "pdf-ollama-translator-popup__result", attr: { dir: "auto" } });
 		this.resizeObserver = new ResizeObserver(() => this.handleResize());
 		this.resizeObserver.observe(this.rootEl);
 		this.updateOptions(options);
@@ -201,8 +207,34 @@ export class TranslationPopup {
 				attr: { "aria-label": t("popup.translateSelection"), title: t("popup.translateSelection") },
 			});
 			setIcon(button, "languages");
-			button.onpointerdown = (event) => event.preventDefault();
-			button.onClickEvent(() => this.options.onTranslate());
+			let pressed = false;
+			let fired = false;
+			const fire = () => {
+				if (fired) return;
+				fired = true;
+				// Defer so the rest of this pointer sequence (click) finishes before the popup re-renders.
+				window.setTimeout(() => this.options.onTranslate(), 0);
+			};
+			button.onpointerdown = (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				if (event.button === 0) pressed = true;
+			};
+			button.onpointerup = (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				if (pressed && event.button === 0) fire();
+				pressed = false;
+			};
+			button.onpointerleave = () => {
+				pressed = false;
+			};
+			// Keyboard activation (Enter/Space) and any environment where pointer events are unavailable.
+			button.onClickEvent((event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				fire();
+			});
 			return;
 		}
 
@@ -249,7 +281,12 @@ export class TranslationPopup {
 				targetSelect.value = previousSource;
 			}
 			updateLanguages();
-			this.options.onRetry();
+			// Change: removed this.options.onRetry() call here.
+			// swap is a "language settings adjustment" action, not an "translate now" command.
+			// After swapping, the user should explicitly trigger translation via the retry button
+			// (popup refresh-cw icon) when a re-translation in the new language pair is desired.
+			// To restore the previous behavior, uncomment the next line:
+			// this.options.onRetry();
 		});
 	}
 

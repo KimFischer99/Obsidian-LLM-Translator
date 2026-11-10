@@ -83,9 +83,10 @@ export class TranslationTimeoutError extends Error {
 }
 
 export const DEFAULT_TRANSLATION_PROMPT =
-	"Translate English, German, French, Turkish, Japanese, or Simplified Chinese into the selected target language. Preserve terminology, numbers, formulas, citations, and paragraph breaks. Output only the translation.";
+	"Translate from {sourceLanguage} to {targetLanguage}. Preserve terminology, numbers, formulas, citations, and paragraph breaks. Output only the translation.";
 
 const LEGACY_TRANSLATION_PROMPTS = [
+	"Translate English, German, French, Turkish, Japanese, or Simplified Chinese into the selected target language. Preserve terminology, numbers, formulas, citations, and paragraph breaks. Output only the translation.",
 	"Translate English, German, French, Japanese, or Simplified Chinese into the selected target language. Preserve terminology, numbers, formulas, citations, and paragraph breaks. Output only the translation.",
 ];
 
@@ -110,6 +111,9 @@ const LANGUAGE_NAMES: Record<TranslationLanguage, string> = {
 	tr: "Turkish",
 	ja: "Japanese",
 	"zh-Hans": "Simplified Chinese",
+	fa: "Persian (Farsi)",
+	es: "Spanish",
+	ko: "Korean",
 };
 
 export function getProviderLabel(provider: TranslationProviderId): string {
@@ -356,7 +360,7 @@ export class TranslatorService {
 					text: "Hello",
 					sourceLanguage: "en",
 					targetLanguage: "zh-Hans",
-					allowedSourceLanguages: ["en", "de", "fr", "tr", "ja", "zh-Hans"],
+					allowedSourceLanguages: ["en", "de", "fr", "tr", "ja", "zh-Hans", "fa", "es", "ko"],
 				});
 				return { ok: true, message: t("error.connectionSuccess", { provider: getProviderLabel(provider), result: result.translatedText }) };
 			} catch (error) {
@@ -665,7 +669,8 @@ export class TranslatorService {
 	private getSystemPrompt(settings: PdfOllamaTranslatorSettings, request: TranslationRequest): string {
 		const source = LANGUAGE_NAMES[request.sourceLanguage] ?? request.sourceLanguage;
 		const target = LANGUAGE_NAMES[request.targetLanguage] ?? request.targetLanguage;
-		const template = settings.customPrompt.trim() || DEFAULT_TRANSLATION_PROMPT;
+		const template = (migrateTranslationPrompt(settings.customPrompt).trim() || DEFAULT_TRANSLATION_PROMPT)
+			.split("{sourceLanguage}").join(source).split("{targetLanguage}").join(target);
 		return `${template}\n\nSource language: ${source}\nTarget language: ${target}`;
 	}
 

@@ -126,11 +126,14 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 		for (const option of [
 			{ value: "auto", label: t("language.auto") },
 			{ value: "en", label: t("language.english") },
-			{ value: "de", label: t("language.german") },
 			{ value: "fr", label: t("language.french") },
-			{ value: "tr", label: t("language.turkish") },
+			{ value: "de", label: t("language.german") },
 			{ value: "ja", label: t("language.japanese") },
+			{ value: "ko", label: t("language.korean") },
+			{ value: "fa", label: t("language.persian") },
 			{ value: "zh-Hans", label: t("language.chinese") },
+			{ value: "es", label: t("language.spanish") },
+			{ value: "tr", label: t("language.turkish") },
 		]) {
 			sourceEl.createEl("option", { text: option.label, value: option.value });
 		}
@@ -149,11 +152,14 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 		const targetEl = rowEl.createEl("select", { cls: "pdf-ollama-translator-sidebar__select" });
 		for (const option of [
 			{ value: "en", label: t("language.english") },
-			{ value: "de", label: t("language.german") },
 			{ value: "fr", label: t("language.french") },
-			{ value: "tr", label: t("language.turkish") },
+			{ value: "de", label: t("language.german") },
 			{ value: "ja", label: t("language.japanese") },
+			{ value: "ko", label: t("language.korean") },
+			{ value: "fa", label: t("language.persian") },
 			{ value: "zh-Hans", label: t("language.chinese") },
+			{ value: "es", label: t("language.spanish") },
+			{ value: "tr", label: t("language.turkish") },
 		]) {
 			targetEl.createEl("option", { text: option.label, value: option.value });
 		}
@@ -179,7 +185,12 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 				sourceLanguage: sourceEl.value as TranslationLanguage,
 				targetLanguage: targetEl.value as Exclude<TranslationLanguage, "auto">,
 			});
-			await this.plugin.translateSidebarText(sourceText, sourceRect);
+			// Change: removed this.plugin.translateActiveSelectionFromSidebar() call here.
+			// swap is a "language settings adjustment" action, not an "translate now" command.
+			// After swapping, the user should explicitly trigger translation via the sidebar's
+			// "Translate input" or "Use current selection" button.
+			// To restore the previous behavior, uncomment the next line:
+			// void this.plugin.translateActiveSelectionFromSidebar();
 		});
 	}
 
@@ -191,12 +202,13 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 			attr: {
 				"aria-label": t("sidebar.sourceText"),
 				placeholder: t("sidebar.sourceTextPlaceholder"),
+				dir: "auto",
 			},
 		});
 		this.sourceInputEl = sourceEl;
 		sourceEl.value = state.sourceText;
 
-		const resultEl = container.createDiv({ cls: "pdf-ollama-translator-sidebar__panel pdf-ollama-translator-sidebar__panel--result" });
+		const resultEl = container.createDiv({ cls: "pdf-ollama-translator-sidebar__panel pdf-ollama-translator-sidebar__panel--result", attr: { dir: "auto" } });
 		this.resultOutputEl = resultEl;
 		if (state.status === "loading") {
 			resultEl.setText(t("sidebar.translating"));

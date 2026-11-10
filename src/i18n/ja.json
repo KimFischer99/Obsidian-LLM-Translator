@@ -1,6 +1,7 @@
 {
   "command": {
-    "openSidebar": "翻訳サイドバーを開く"
+    "openSidebar": "翻訳サイドバーを開く",
+    "translateSelection": "選択範囲を翻訳"
   },
   "settings": {
     "section": {
@@ -51,7 +52,10 @@
     "repeatPenaltyDesc": "出力の繰り返しを減らします。",
     "numPredictDesc": "リクエストごとの生成トークン数の上限です。",
     "test": "テスト",
-    "testing": "テスト中..."
+    "testing": "テスト中...",
+    "enableContextMenu": "Enable right-click translate",
+    "enableTranslationCache": "Cache translation results",
+    "enableTranslationCacheDesc": "Reuse the cached result for identical source text instead of calling the model again."
   },
   "sidebar": {
     "title": "翻訳",
@@ -114,7 +118,10 @@
     "french": "フランス語",
     "turkish": "トルコ語",
     "japanese": "日本語",
-    "chinese": "簡体字中国語"
+    "chinese": "簡体字中国語",
+    "persian": "ペルシア語",
+    "spanish": "スペイン語",
+    "korean": "韓国語"
   },
   "note": {
     "source": "出典",
@@ -173,5 +180,9 @@
     "connectionSuccess": "${provider} に接続しました: ${result}",
     "ollamaConnectedButModelNotFound": "Ollama に接続しましたが、モデル「${model}」が見つかりません。",
     "modelAvailable": "接続に成功しました。モデル「${model}」を使用できます。"
+  },
+  "contextMenu": {
+    "translate": "Translate",
+    "copy": "Copy"
   }
 }

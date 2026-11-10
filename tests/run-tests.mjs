@@ -20,6 +20,7 @@ const result = await esbuild.build({
 			build.onLoad({ filter: /.*/, namespace: "obsidian-test" }, () => ({
 				contents: `
 					export function getLanguage() { return "en"; }
+					export class Menu {}
 					export class Plugin {}
 					export class ItemView {}
 					export class PluginSettingTab {}

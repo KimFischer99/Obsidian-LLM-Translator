@@ -2,10 +2,12 @@ import { Modal, Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import { getProviderLabel, TranslatorService } from "./translatorService";
 import { DEFAULT_TRANSLATION_PROMPT, migrateTranslationPrompt } from "./translatorService";
 import { PdfSelectionReader } from "./pdfSelection";
+import { PdfContextMenuService } from "./pdfContextMenu";
 import { PdfOllamaTranslatorSettingTab } from "./settings";
 import { PDF_OLLAMA_TRANSLATOR_VIEW_TYPE, PdfOllamaTranslatorSidebarView } from "./sidebarView";
 import { TranslationPopup } from "./translationPopup";
 import { PdfHighlightService } from "./pdfHighlight/PdfHighlightService";
+import { TranslationCache, buildCacheKey, normalizeCacheText } from "./translationCache";
 import { t } from "./i18n";
 import { appendTranslationNote, type TranslationNoteSnapshot } from "./noteExport";
 import type {
@@ -27,6 +29,8 @@ const DEFAULT_SETTINGS: PdfOllamaTranslatorSettings = {
 	autoTranslateSelection: true,
 	enablePopup: true,
 	noteTargetPath: "",
+	enableContextMenu: true,
+	enableTranslationCache: true,
 	restrictSourceLanguages: true,
 	sourceLanguage: "auto",
 	targetLanguage: "zh-Hans",
@@ -64,8 +68,10 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	settings: PdfOllamaTranslatorSettings;
 	private translator: TranslatorService;
 	private selectionReader: PdfSelectionReader;
+	private contextMenuService: PdfContextMenuService;
 	private highlightService: PdfHighlightService;
 	private popup: TranslationPopup;
+	private cache: TranslationCache | undefined;
 	private selectionTimer: number | undefined;
 	private activeRequest: AbortController | undefined;
 	private lastSelection: PdfTextSelection | undefined;
@@ -86,11 +92,21 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
+		this.cache = new TranslationCache(this.app.vault.adapter, `${this.manifest.dir}/cache.json`);
+		await this.cache.load();
+
 		this.translator = new TranslatorService(
 			() => this.settings,
 			(secretId) => this.app.secretStorage.getSecret(secretId),
 		);
 		this.selectionReader = new PdfSelectionReader(this.app, () => this.settings, this.debug);
+		this.contextMenuService = new PdfContextMenuService({
+			app: this.app,
+			getSettings: () => this.settings,
+			getSelection: () => this.selectionReader.readSelection(),
+			onTranslate: (text, selection) => void this.translateCapturedSelection(text, selection),
+			debug: this.debug,
+		});
 		this.highlightService = new PdfHighlightService(
 			this.app,
 			this.debug,
@@ -128,19 +144,47 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			name: t("command.openSidebar"),
 			callback: () => void this.activateSidebarView(),
 		});
+		this.addCommand({
+			id: "translate-current-selection",
+			name: t("command.translateSelection"),
+			callback: () => void this.translateSelectionByCommand(),
+		});
 		this.registerSelectionEvents();
+		this.registerEditorMenu();
+		this.contextMenuService.onload();
 		this.registerWorkspaceEvents();
+	}
+
+	private async translateSelectionByCommand(): Promise<void> {
+		const selection = this.selectionReader.readSelection() ?? this.lastSelection ?? this.lastDocumentSelection;
+		this.debug("Translate command.", { hasSelection: Boolean(selection) });
+		if (!selection) {
+			new Notice(t("notice.selectTextFirst"));
+			return;
+		}
+		await this.translateSelection(selection, true, true);
 	}
 
 	onunload(): void {
 		this.cancelActiveRequest();
 		window.clearTimeout(this.selectionTimer);
+		void this.cache?.flush().catch(() => undefined);
+		this.contextMenuService?.destroy();
 		void this.highlightService?.flushAllPending();
 		this.highlightService?.destroy();
 		this.popup?.destroy();
 	}
 
 	async updateSettings(partial: Partial<PdfOllamaTranslatorSettings>): Promise<void> {
+		const translationKeys: Array<keyof PdfOllamaTranslatorSettings> = [
+			"sourceLanguage", "targetLanguage", "translationProvider", "translationScope",
+			"ollamaBaseUrl", "model", "cloudApiBaseUrl", "cloudApiModel", "cloudApiKeySecretId",
+			"customPrompt", "topK", "topP", "repeatPenalty", "numPredict", "ollamaOptionsJson",
+			"cleanModelOutput", "restrictSourceLanguages", "autoTranslateSelection", "maxSelectionChars", "requestTimeoutMs",
+		];
+		if (translationKeys.some((key) => key in partial && partial[key] !== this.settings[key])) {
+			this.lastSelectionKey = "";
+		}
 		this.settings = { ...this.settings, ...partial };
 		await this.saveSettings();
 		this.syncPopupOptions();
@@ -306,7 +350,47 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			new Notice(t("notice.selectTextFirst"));
 			return;
 		}
-		await this.translateSelection(selection, true);
+		await this.translateSelection(selection, true, false, false);
+	}
+
+	/**
+	 * Translates text captured when a context menu was built.
+	 *
+	 * The menu takes focus when the user clicks an item, which can collapse the
+	 * selection, so the text is passed in rather than re-read here. `selection`
+	 * carries the geometry captured at the same moment; it is re-read as a
+	 * fallback and finally synthesised, because the popup needs a rect to anchor
+	 * to and the caret may be gone by now.
+	 */
+	async translateCapturedSelection(text: string, selection: PdfTextSelection | null): Promise<void> {
+		const sourceText = text.trim();
+		if (!sourceText) {
+			new Notice(t("notice.selectTextFirst"));
+			return;
+		}
+
+		const captured = selection ?? this.selectionReader.readSelection() ?? this.lastDocumentSelection;
+		if (captured && captured.text.trim() === sourceText) {
+			await this.translateSelection(captured, true, false, false);
+			return;
+		}
+
+		// The captured geometry describes different text, so it cannot be reused:
+		// `overlayRects` and `pageHint` would make a later highlight land on the
+		// wrong words. Keep only the file and an anchor for the popup.
+		await this.translateSelection(
+			{
+				text: sourceText,
+				file: captured?.file,
+				rect: captured?.rect ?? this.getViewportCenterRect(),
+			},
+			true, false, false,
+		);
+	}
+
+	/** Anchor of last resort when a selection rect is no longer available. */
+	private getViewportCenterRect(): DOMRect {
+		return new DOMRect(window.innerWidth / 2, window.innerHeight / 3, 0, 0);
 	}
 
 	async translateSidebarText(text: string, rect: DOMRect): Promise<void> {
@@ -316,7 +400,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			return;
 		}
 
-		await this.translateSelection({ text: sourceText, rect }, true);
+		await this.translateSelection({ text: sourceText, rect }, true, false, false);
 	}
 
 	async highlightActiveSelection(): Promise<void> {
@@ -483,6 +567,35 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 		);
 	}
 
+	/**
+	 * Markdown editors get their item through Obsidian's official `editor-menu`
+	 * event. PDF views are handled by {@link PdfContextMenuService}, which hooks
+	 * the `pdf-menu` extension point instead of intercepting right-clicks on the
+	 * parent document — intercepting there would swallow every other plugin's
+	 * context menu items.
+	 */
+	private registerEditorMenu(): void {
+		this.registerEvent(
+			this.app.workspace.on("editor-menu", (menu, editor) => {
+				if (!this.settings.enableContextMenu) {
+					return;
+				}
+				const text = editor.getSelection().trim();
+				if (!text) {
+					return;
+				}
+				menu.addItem((item) => {
+					item
+						.setTitle(t("contextMenu.translate"))
+						.setIcon("languages")
+						// Capture the text now: clicking the item moves focus and
+						// can collapse the editor selection.
+						.onClick(() => void this.translateCapturedSelection(text, this.selectionReader.readSelection()));
+				});
+			}),
+		);
+	}
+
 	private handleDocumentPointerDown(event: MouseEvent): void {
 		if (isHighlightNoteTarget(event.target)) {
 			return;
@@ -566,6 +679,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 	}
 
 	private async retryLastSelection(): Promise<void> {
+		this.debug("Manual translate / retry requested.", { hasSelection: Boolean(this.lastSelection) });
 		if (!this.lastSelection) {
 			new Notice(t("notice.noSelectionToRetry"));
 			return;
@@ -573,7 +687,7 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 		await this.translateSelection(this.lastSelection, true, true);
 	}
 
-	private async translateSelection(selection: PdfTextSelection, force: boolean, fromPopup = false): Promise<void> {
+	private async translateSelection(selection: PdfTextSelection, force: boolean, fromPopup = false, bypassCache = force): Promise<void> {
 		const selectionKey = `${selection.text}:${Math.round(selection.rect.left)}:${Math.round(selection.rect.top)}`;
 		const showPopup = fromPopup || !this.isSidebarVisible();
 		const shouldShowPopup = showPopup && this.settings.enablePopup;
@@ -609,6 +723,32 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 			return;
 		}
 
+		const normalizedText = normalizeCacheText(selection.text);
+		const key = buildCacheKey(this.settings.sourceLanguage, this.settings.targetLanguage, normalizedText, this.settings);
+		const cacheEnabled = !!this.cache && this.settings.enableTranslationCache && normalizedText.length > 0;
+		if (!bypassCache && cacheEnabled) {
+			const cached = this.cache!.get(key);
+			if (cached) {
+				this.lastSelection = selection;
+				this.lastSelectionKey = selectionKey;
+				this.cancelActiveRequest();
+				if (!shouldShowPopup) {
+					this.popup.hide();
+				}
+				this.presentSuccess(
+					{
+						sourceText: selection.text,
+						translatedText: cached.translatedText,
+						model: cached.model,
+						elapsedMs: 0,
+					},
+					selection,
+					shouldShowPopup,
+				);
+				return;
+			}
+		}
+
 		this.lastSelection = selection;
 		this.lastSelectionKey = selectionKey;
 		this.popupNoteSnapshot = undefined;
@@ -638,28 +778,19 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 				text: selection.text,
 				sourceLanguage: this.settings.sourceLanguage,
 				targetLanguage: this.settings.targetLanguage,
-				allowedSourceLanguages: ["en", "de", "fr", "tr", "ja", "zh-Hans"],
+				allowedSourceLanguages: ["en", "de", "fr", "tr", "ja", "zh-Hans", "fa", "es", "ko"],
 				signal: request.signal,
 			});
 			if (!request.signal.aborted) {
-				const snapshot: TranslationNoteSnapshot = {
-					sourceText: result.sourceText,
-					translatedText: result.translatedText,
-					file: selection.file,
-					pageHint: selection.pageHint,
-					selection,
-				};
-				this.sidebarNoteSource = { file: selection.file, pageHint: selection.pageHint, selection };
-				if (shouldShowPopup && this.settings.enablePopup) {
-					this.popupNoteSnapshot = snapshot;
-					this.showTranslationResult(result, selection.rect, selection.document);
+				this.presentSuccess(result, selection, shouldShowPopup && this.settings.enablePopup);
+				if (cacheEnabled && result.translatedText) {
+					this.cache!.set(key, {
+						translatedText: result.translatedText,
+						model: result.model,
+						timestamp: Date.now(),
+						version: 1,
+					});
 				}
-				this.updateSidebarState({
-					sourceText: result.sourceText,
-					translatedText: result.translatedText,
-					status: "success",
-					message: "",
-				});
 			}
 		} catch (error) {
 			if (request.signal.aborted) {
@@ -684,8 +815,14 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 		}
 	}
 
-	private showTranslationResult(result: TranslationResult, rect: DOMRect, document?: Document): void {
-		this.popup.showResult(result, rect, document);
+	private presentSuccess(result: TranslationResult, selection: PdfTextSelection, shouldShowPopup: boolean): void {
+		this.sidebarNoteSource = { file: selection.file, pageHint: selection.pageHint, selection };
+		this.popupNoteSnapshot = undefined;
+		if (shouldShowPopup) {
+			this.popupNoteSnapshot = { sourceText: result.sourceText, translatedText: result.translatedText, file: selection.file, pageHint: selection.pageHint, selection };
+			this.popup.showResult(result, selection.rect, selection.document);
+		}
+		this.updateSidebarState({ sourceText: result.sourceText, translatedText: result.translatedText, status: "success", message: "" });
 	}
 
 	private getMissingProviderConfigMessage(): string {

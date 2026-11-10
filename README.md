@@ -50,7 +50,7 @@
 - Sidebar translation panel for manual input or the current selection
 - Copy / Retry / One-click language switch
 - Custom translation prompt for professional needs
-- Translate between English, German, French, Turkish, Japanese, and Simplified Chinese
+- Translate between English, German, French, Turkish, Japanese, Simplified Chinese, Persian (Farsi), Spanish, and Korean
 
 ### 🌐 Multi-language Interface
 
