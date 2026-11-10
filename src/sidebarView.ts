@@ -131,6 +131,7 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 			{ value: "tr", label: t("language.turkish") },
 			{ value: "ja", label: t("language.japanese") },
 			{ value: "zh-Hans", label: t("language.chinese") },
+			{ value: "fa", label: t("language.persian") },
 		]) {
 			sourceEl.createEl("option", { text: option.label, value: option.value });
 		}
@@ -154,6 +155,7 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 			{ value: "tr", label: t("language.turkish") },
 			{ value: "ja", label: t("language.japanese") },
 			{ value: "zh-Hans", label: t("language.chinese") },
+			{ value: "fa", label: t("language.persian") },
 		]) {
 			targetEl.createEl("option", { text: option.label, value: option.value });
 		}
@@ -191,12 +193,13 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 			attr: {
 				"aria-label": t("sidebar.sourceText"),
 				placeholder: t("sidebar.sourceTextPlaceholder"),
+				dir: "auto",
 			},
 		});
 		this.sourceInputEl = sourceEl;
 		sourceEl.value = state.sourceText;
 
-		const resultEl = container.createDiv({ cls: "pdf-ollama-translator-sidebar__panel pdf-ollama-translator-sidebar__panel--result" });
+		const resultEl = container.createDiv({ cls: "pdf-ollama-translator-sidebar__panel pdf-ollama-translator-sidebar__panel--result", attr: { dir: "auto" } });
 		this.resultOutputEl = resultEl;
 		if (state.status === "loading") {
 			resultEl.setText(t("sidebar.translating"));

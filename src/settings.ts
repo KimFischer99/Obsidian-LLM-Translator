@@ -13,6 +13,7 @@ const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; labelKey: str
 	{ value: "tr", labelKey: "language.turkish" },
 	{ value: "ja", labelKey: "language.japanese" },
 	{ value: "zh-Hans", labelKey: "language.chinese" },
+	{ value: "fa", labelKey: "language.persian" },
 ];
 
 const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto">; labelKey: string }> = [
@@ -22,6 +23,7 @@ const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto
 	{ value: "tr", labelKey: "language.turkish" },
 	{ value: "ja", labelKey: "language.japanese" },
 	{ value: "zh-Hans", labelKey: "language.chinese" },
+	{ value: "fa", labelKey: "language.persian" },
 ];
 
 export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {

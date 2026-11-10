@@ -37,6 +37,7 @@ const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; label: string
 	{ value: "tr", label: "TR" },
 	{ value: "ja", label: "JA" },
 	{ value: "zh-Hans", label: "ZH" },
+	{ value: "fa", label: "FA" },
 ];
 
 const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto">; label: string }> = [
@@ -46,6 +47,7 @@ const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto
 	{ value: "tr", label: "TR" },
 	{ value: "ja", label: "JA" },
 	{ value: "zh-Hans", label: "ZH" },
+	{ value: "fa", label: "FA" },
 ];
 
 export class TranslationPopup {
@@ -70,7 +72,7 @@ export class TranslationPopup {
 		this.actionsEl = headerEl.createDiv({ cls: "pdf-ollama-translator-popup__actions" });
 
 		const bodyEl = this.rootEl.createDiv({ cls: "pdf-ollama-translator-popup__body" });
-		this.resultEl = bodyEl.createDiv({ cls: "pdf-ollama-translator-popup__result" });
+		this.resultEl = bodyEl.createDiv({ cls: "pdf-ollama-translator-popup__result", attr: { dir: "auto" } });
 		this.resizeObserver = new ResizeObserver(() => this.handleResize());
 		this.resizeObserver.observe(this.rootEl);
 		this.updateOptions(options);
