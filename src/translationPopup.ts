@@ -38,6 +38,8 @@ const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; label: string
 	{ value: "ja", label: "JA" },
 	{ value: "zh-Hans", label: "ZH" },
 	{ value: "fa", label: "FA" },
+	{ value: "es", label: "ES" },
+	{ value: "ko", label: "KO" },
 ];
 
 const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto">; label: string }> = [
@@ -48,6 +50,8 @@ const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto
 	{ value: "ja", label: "JA" },
 	{ value: "zh-Hans", label: "ZH" },
 	{ value: "fa", label: "FA" },
+	{ value: "es", label: "ES" },
+	{ value: "ko", label: "KO" },
 ];
 
 export class TranslationPopup {
@@ -277,7 +281,12 @@ export class TranslationPopup {
 				targetSelect.value = previousSource;
 			}
 			updateLanguages();
-			this.options.onRetry();
+			// Change: removed this.options.onRetry() call here.
+			// swap is a "language settings adjustment" action, not an "translate now" command.
+			// After swapping, the user should explicitly trigger translation via the retry button
+			// (popup refresh-cw icon) when a re-translation in the new language pair is desired.
+			// To restore the previous behavior, uncomment the next line:
+			// this.options.onRetry();
 		});
 	}
 

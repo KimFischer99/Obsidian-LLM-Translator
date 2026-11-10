@@ -14,6 +14,8 @@ const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslationLanguage; labelKey: str
 	{ value: "ja", labelKey: "language.japanese" },
 	{ value: "zh-Hans", labelKey: "language.chinese" },
 	{ value: "fa", labelKey: "language.persian" },
+	{ value: "es", labelKey: "language.spanish" },
+	{ value: "ko", labelKey: "language.korean" },
 ];
 
 const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto">; labelKey: string }> = [
@@ -24,6 +26,8 @@ const TARGET_LANGUAGE_OPTIONS: Array<{ value: Exclude<TranslationLanguage, "auto
 	{ value: "ja", labelKey: "language.japanese" },
 	{ value: "zh-Hans", labelKey: "language.chinese" },
 	{ value: "fa", labelKey: "language.persian" },
+	{ value: "es", labelKey: "language.spanish" },
+	{ value: "ko", labelKey: "language.korean" },
 ];
 
 export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
@@ -88,6 +92,16 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 					await this.plugin.updateSettings({ noteTargetPath: "" });
 					this.display();
 				}));
+
+		new Setting(containerEl)
+			.setName(t("settings.enableContextMenu"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableContextMenu)
+					.onChange(async (value) => {
+						await this.plugin.updateSettings({ enableContextMenu: value });
+					}),
+			);
 
 		this.addSection(t("settings.section.service"));
 		new Setting(containerEl)
@@ -276,6 +290,17 @@ export class PdfOllamaTranslatorSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.cleanModelOutput)
 					.onChange(async (value) => {
 						await this.plugin.updateSettings({ cleanModelOutput: value });
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName(t("settings.enableTranslationCache"))
+			.setDesc(t("settings.enableTranslationCacheDesc"))
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableTranslationCache)
+					.onChange(async (value) => {
+						await this.plugin.updateSettings({ enableTranslationCache: value });
 					}),
 			);
 

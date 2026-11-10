@@ -132,6 +132,8 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 			{ value: "ja", label: t("language.japanese") },
 			{ value: "zh-Hans", label: t("language.chinese") },
 			{ value: "fa", label: t("language.persian") },
+			{ value: "es", label: t("language.spanish") },
+			{ value: "ko", label: t("language.korean") },
 		]) {
 			sourceEl.createEl("option", { text: option.label, value: option.value });
 		}
@@ -156,6 +158,8 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 			{ value: "ja", label: t("language.japanese") },
 			{ value: "zh-Hans", label: t("language.chinese") },
 			{ value: "fa", label: t("language.persian") },
+			{ value: "es", label: t("language.spanish") },
+			{ value: "ko", label: t("language.korean") },
 		]) {
 			targetEl.createEl("option", { text: option.label, value: option.value });
 		}
@@ -181,7 +185,12 @@ export class PdfOllamaTranslatorSidebarView extends ItemView {
 				sourceLanguage: sourceEl.value as TranslationLanguage,
 				targetLanguage: targetEl.value as Exclude<TranslationLanguage, "auto">,
 			});
-			await this.plugin.translateSidebarText(sourceText, sourceRect);
+			// Change: removed this.plugin.translateActiveSelectionFromSidebar() call here.
+			// swap is a "language settings adjustment" action, not an "translate now" command.
+			// After swapping, the user should explicitly trigger translation via the sidebar's
+			// "Translate input" or "Use current selection" button.
+			// To restore the previous behavior, uncomment the next line:
+			// void this.plugin.translateActiveSelectionFromSidebar();
 		});
 	}
 

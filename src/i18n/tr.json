@@ -52,7 +52,10 @@
     "repeatPenaltyDesc": "Tekrarlanan çıktı olasılığını azaltır.",
     "numPredictDesc": "Her istek için üretilecek en fazla token sayısı.",
     "test": "Test et",
-    "testing": "Test ediliyor..."
+    "testing": "Test ediliyor...",
+    "enableContextMenu": "Enable right-click translate",
+    "enableTranslationCache": "Cache translation results",
+    "enableTranslationCacheDesc": "Reuse the cached result for identical source text instead of calling the model again."
   },
   "sidebar": {
     "title": "Çevir",
@@ -116,7 +119,9 @@
     "turkish": "Türkçe",
     "japanese": "Japonca",
     "chinese": "Basitleştirilmiş Çince",
-    "persian": "Farsça"
+    "persian": "Farsça",
+    "spanish": "İspanyolca",
+    "korean": "Korece"
   },
   "note": {
     "source": "Kaynak",
@@ -175,5 +180,9 @@
     "connectionSuccess": "${provider} bağlantısı başarılı: ${result}",
     "ollamaConnectedButModelNotFound": "Ollama'ya bağlanıldı ancak \"${model}\" modeli bulunamadı.",
     "modelAvailable": "Bağlantı başarılı, \"${model}\" modeli kullanılabilir."
+  },
+  "contextMenu": {
+    "translate": "Translate",
+    "copy": "Copy"
   }
 }

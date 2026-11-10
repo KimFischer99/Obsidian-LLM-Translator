@@ -18,6 +18,7 @@
     "noteTarget": "Translation note directory",
     "noteTargetDefault": "Per source file",
     "chooseNote": "Choose note",
+    "enableContextMenu": "Enable right-click translate",
     "translationService": "Translation service",
     "sourceLanguage": "Source language",
     "targetLanguage": "Target language",
@@ -39,6 +40,8 @@
     "cleanOutputDesc": "Automatically remove quotes, code blocks, translation tags and thinking residue.",
     "debugLogging": "Debug logging",
     "debugLoggingDesc": "Log request status and error summaries to the developer console.",
+    "enableTranslationCache": "Cache translation results",
+    "enableTranslationCacheDesc": "Reuse the cached result for identical source text instead of calling the model again.",
     "localEndpoint": "Local model endpoint",
     "modelName": "Model name",
     "selectModel": "Select model",
@@ -116,7 +119,9 @@
     "turkish": "Türkçe",
     "japanese": "日本語",
     "chinese": "简体中文",
-    "persian": "فارسی"
+    "persian": "فارسی",
+    "spanish": "Español",
+    "korean": "한국어"
   },
   "note": {
     "source": "Source",
@@ -132,6 +137,10 @@
     "invalidTarget": "The selected Markdown destination no longer exists.",
     "pathConflict": "A different file already uses this translation note name.",
     "writeFailed": "Could not add to note: ${error}"
+  },
+  "contextMenu": {
+    "translate": "Translate",
+    "copy": "Copy"
   },
   "notice": {
     "nothingToCopy": "Nothing to copy.",

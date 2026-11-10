@@ -11,6 +11,8 @@ export interface PdfOllamaTranslatorSettings {
 	autoTranslateSelection: boolean;
 	enablePopup: boolean;
 	noteTargetPath: string;
+	enableContextMenu: boolean;
+	enableTranslationCache: boolean;
 	restrictSourceLanguages: boolean;
 	sourceLanguage: TranslationLanguage;
 	targetLanguage: Exclude<TranslationLanguage, "auto">;
@@ -39,7 +41,7 @@ export type HighlightColorId = "yellow" | "red" | "blue" | "green" | "purple";
 
 export type TranslationProviderId = "local-llm" | "cloud-api" | "google" | "bing";
 
-export type TranslationLanguage = "auto" | "en" | "de" | "fr" | "tr" | "ja" | "zh-Hans" | "fa";
+export type TranslationLanguage = "auto" | "en" | "de" | "fr" | "tr" | "ja" | "zh-Hans" | "fa" | "es" | "ko";
 
 export interface TranslationRequest {
 	text: string;
@@ -63,6 +65,18 @@ export interface PdfTextSelection {
 	file?: TFile;
 	pageHint?: number;
 	overlayRects?: PdfSelectionOverlayRect[];
+}
+
+/**
+ * Payload carried by the `pdf-menu` workspace event. `pdf-menu` is not part of
+ * Obsidian's public API — PDF++ introduced it as an extension point so other
+ * plugins can contribute items to the PDF context menu. Every field is optional
+ * because broadcasters differ in how much context they can supply.
+ */
+export interface PdfMenuPayload {
+	pageNumber?: number;
+	selection?: string;
+	annot?: unknown;
 }
 
 export interface PdfSelectionOverlayRect {
