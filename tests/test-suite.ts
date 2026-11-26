@@ -584,11 +584,33 @@ test("build metadata describes one release version", async () => {
 		readProjectJson("package-lock.json"),
 		readProjectJson("versions.json"),
 	]);
-	assert.equal(packageJson.version, "0.5.4");
+	assert.equal(packageJson.version, "0.5.5");
 	assert.equal(manifest.version, packageJson.version);
 	assert.equal(packageLock.version, packageJson.version);
 	assert.equal(packageLock.packages[""].version, packageJson.version);
 	assert.equal(versions[packageJson.version], manifest.minAppVersion);
+});
+
+test("settings load migrates and saves the previous default Ollama model", async () => {
+	const plugin = Object.create(PdfOllamaTranslatorPlugin.prototype) as PdfOllamaTranslatorPlugin;
+	plugin.loadData = async () => ({ model: "hy-mt2-1.8b-q4:latest" });
+	let savedModel: string | undefined;
+	plugin.saveData = async (settings: PdfOllamaTranslatorSettings) => { savedModel = settings.model; };
+
+	await plugin["loadSettings"]();
+
+	assert.equal(plugin.settings.model, "hy-mt3-1.8b-q4:latest");
+	assert.equal(savedModel, plugin.settings.model);
+});
+
+test("settings load preserves a custom Ollama model", async () => {
+	const plugin = Object.create(PdfOllamaTranslatorPlugin.prototype) as PdfOllamaTranslatorPlugin;
+	plugin.loadData = async () => ({ model: "my-translator:latest" });
+	plugin.saveData = async () => assert.fail("custom model should need no migration");
+
+	await plugin["loadSettings"]();
+
+	assert.equal(plugin.settings.model, "my-translator:latest");
 });
 
 test("stored prompt follows the default prompt after the Turkish update", async () => {
@@ -784,6 +806,40 @@ test("automatic Persian translation preserves custom prompt and resolves languag
 	await service.translate({ text: "Hello", sourceLanguage: "auto", targetLanguage: "fa", allowedSourceLanguages: ["fa"] });
 	assert.match(prompt, /Formal tone for Persian \(Farsi\)/);
 	assert.match(prompt, /Source language: auto-detected language/);
+});
+
+test("Hy-MT3 on Ollama applies the GGUF prompt format and reads the generated translation", async () => {
+	const model = "hy-mt3-1.8b-q4:latest";
+	__setRequestUrl(async (params: { url: string; body: string }) => {
+		assert.equal(params.url, "http://localhost:11434/api/generate");
+		const body = JSON.parse(params.body);
+		assert.equal(body.model, model);
+		assert.equal(body.raw, true);
+		assert.match(body.prompt, /^<｜hy_begin▁of▁sentence｜><｜hy_User｜>Translate the following text into Simplified Chinese\./);
+		assert.match(body.prompt, /Output only the translation without any additional explanation:\nHello\.<｜hy_Assistant｜>$/);
+		return { status: 200, json: { response: "译文：你好。" } };
+	});
+	const service = new TranslatorService(() => ({ ...SETTINGS, model, customPrompt: DEFAULT_TRANSLATION_PROMPT }));
+	const result = await service.translate({ ...REQUEST, text: "Hello.", sourceLanguage: "auto" });
+	assert.equal(result.translatedText, "你好。");
+});
+
+test("Hy-MT3 on an OpenAI-compatible server sends translation instructions and text in one message", async () => {
+	__setRequestUrl(async (params: { body: string }) => {
+		const { messages } = JSON.parse(params.body);
+		assert.deepEqual(messages.map((message: { role: string }) => message.role), ["user"]);
+		assert.match(messages[0].content, /Translate the following text from English into Simplified Chinese\./);
+		assert.match(messages[0].content, /Use a formal tone in Simplified Chinese\. Output only the translation without any additional explanation:\nHello\.$/);
+		return { status: 200, json: { choices: [{ message: { content: "您好。" } }] } };
+	});
+	const service = new TranslatorService(() => ({
+		...SETTINGS,
+		translationProvider: "cloud-api",
+		cloudApiModel: "Hy-MT3-1.8B",
+		customPrompt: "Use a formal tone in {targetLanguage}.",
+	}), () => "test-secret");
+	const result = await service.translate({ ...REQUEST, text: "Hello." });
+	assert.equal(result.translatedText, "您好。");
 });
 
 test("manual translate pointerup and click trigger one deferred action", async () => {

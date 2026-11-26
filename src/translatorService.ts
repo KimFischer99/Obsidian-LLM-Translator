@@ -9,11 +9,11 @@ import type {
 import { requestUrl } from "obsidian";
 import { t } from "./i18n";
 
-interface OllamaChatResponse {
+interface OllamaResponse {
 	message?: {
 		content?: string;
-		thinking?: string;
 	};
+	response?: string;
 	error?: string;
 }
 
@@ -82,6 +82,7 @@ export class TranslationTimeoutError extends Error {
 	}
 }
 
+export const DEFAULT_OLLAMA_MODEL = "hy-mt3-1.8b-q4:latest";
 export const DEFAULT_TRANSLATION_PROMPT =
 	"Translate from {sourceLanguage} to {targetLanguage}. Preserve terminology, numbers, formulas, citations, and paragraph breaks. Output only the translation.";
 
@@ -192,9 +193,19 @@ export class TranslatorService {
 			throw new Error(t("error.selectLocalModel"));
 		}
 
+		const hyMt3 = isHyMt3Model(model);
+		const options = buildOllamaOptions(settings);
+		// The Hugging Face Ollama template drops the user prompt. Render the GGUF's single-turn format directly.
+		const input = hyMt3
+			? {
+				raw: true,
+				prompt: `<｜hy_begin▁of▁sentence｜><｜hy_User｜>${this.getHyMt3Prompt(settings, request)}<｜hy_Assistant｜>`,
+				options: { ...options, num_ctx: 8192, temperature: 0.7 },
+			}
+			: { messages: this.getChatMessages(settings, request), options };
 		const startedAt = performance.now();
 		const response = await this.requestUrlWithTimeout({
-			url: this.getChatUrl(settings.ollamaBaseUrl),
+			url: `${this.getApiBaseUrl(settings.ollamaBaseUrl)}/${hyMt3 ? "generate" : "chat"}`,
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -202,11 +213,7 @@ export class TranslatorService {
 			body: JSON.stringify({
 				model,
 				stream: false,
-				options: buildOllamaOptions(settings),
-				messages: [
-					{ role: "system", content: this.getSystemPrompt(settings, request) },
-					{ role: "user", content: request.text },
-				],
+				...input,
 			}),
 		}, settings.requestTimeoutMs, request.signal, context);
 
@@ -214,12 +221,12 @@ export class TranslatorService {
 			throw new Error(this.toHttpError(response, "Ollama"));
 		}
 
-		const data = response.json as OllamaChatResponse;
+		const data = response.json as OllamaResponse;
 		if (data.error) {
 			throw new Error(data.error);
 		}
 
-		const rawContent = data.message?.content?.trim() ?? "";
+		const rawContent = (hyMt3 ? data.response : data.message?.content)?.trim() ?? "";
 		if (!rawContent) {
 			throw new Error(t("error.ollamaReturnedEmpty"));
 		}
@@ -256,10 +263,9 @@ export class TranslatorService {
 			body: JSON.stringify({
 				model,
 				stream: false,
-				messages: [
-					{ role: "system", content: this.getSystemPrompt(settings, request) },
-					{ role: "user", content: request.text },
-				],
+				messages: isHyMt3Model(model)
+					? [{ role: "user", content: this.getHyMt3Prompt(settings, request) }]
+					: this.getChatMessages(settings, request),
 			}),
 		}, settings.requestTimeoutMs, request.signal, context);
 
@@ -430,10 +436,6 @@ export class TranslatorService {
 			return error.message;
 		}
 		return t("error.unknownError");
-	}
-
-	private getChatUrl(baseUrl: string): string {
-		return `${this.getApiBaseUrl(baseUrl)}/chat`;
 	}
 
 	private getTagsUrl(baseUrl: string): string {
@@ -666,14 +668,31 @@ export class TranslatorService {
 		task.reject(error);
 	}
 
-	private getSystemPrompt(settings: PdfOllamaTranslatorSettings, request: TranslationRequest): string {
+	private getChatMessages(settings: PdfOllamaTranslatorSettings, request: TranslationRequest): Array<{ role: string; content: string }> {
 		const source = LANGUAGE_NAMES[request.sourceLanguage] ?? request.sourceLanguage;
 		const target = LANGUAGE_NAMES[request.targetLanguage] ?? request.targetLanguage;
 		const template = (migrateTranslationPrompt(settings.customPrompt).trim() || DEFAULT_TRANSLATION_PROMPT)
 			.split("{sourceLanguage}").join(source).split("{targetLanguage}").join(target);
-		return `${template}\n\nSource language: ${source}\nTarget language: ${target}`;
+		return [
+			{ role: "system", content: `${template}\n\nSource language: ${source}\nTarget language: ${target}` },
+			{ role: "user", content: request.text },
+		];
 	}
 
+	private getHyMt3Prompt(settings: PdfOllamaTranslatorSettings, request: TranslationRequest): string {
+		const source = LANGUAGE_NAMES[request.sourceLanguage];
+		const target = LANGUAGE_NAMES[request.targetLanguage];
+		const sourcePhrase = request.sourceLanguage === "auto" ? "" : ` from ${source}`;
+		const customPrompt = migrateTranslationPrompt(settings.customPrompt).trim();
+		const guidance = customPrompt && customPrompt !== DEFAULT_TRANSLATION_PROMPT
+			? customPrompt.split("{sourceLanguage}").join(source).split("{targetLanguage}").join(target)
+			: "Preserve terminology, numbers, formulas, citations, and paragraph breaks.";
+		return `Translate the following text${sourcePhrase} into ${target}. ${guidance} Output only the translation without any additional explanation:\n${request.text}`;
+	}
+}
+
+function isHyMt3Model(model: string): boolean {
+	return /(?:^|\/)hy-mt3-1\.8b(?:[-.:]|$)/i.test(model);
 }
 
 function isLoopbackHostname(hostname: string): boolean {

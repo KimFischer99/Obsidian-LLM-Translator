@@ -74,15 +74,18 @@
 # 1. 安装 Ollama（macOS / Linux）
 curl -fsSL https://ollama.com/install.sh | sh
 
-# 2. 拉取翻译模型（推荐 HY-MT2-1.8B）
-ollama pull RogerBen/HY-MT2-1.8B:latest
+# 2. 拉取腾讯 Hy-MT3-1.8B（Q4_K_M）并设置短名称
+ollama pull hf.co/tencent/Hy-MT3-1.8B-GGUF:Q4_K_M
+ollama cp hf.co/tencent/Hy-MT3-1.8B-GGUF:Q4_K_M hy-mt3-1.8b-q4:latest
 
 # 3. 安装插件后，在设置中选择 Local LLM
-#    填入端口 http://localhost:11434 和模型名称
+#    填入地址 http://localhost:11434 并选择已下载的模型
 #    点击测试验证连接
 ```
 
 > 💡 **Windows 用户**：请从 [Ollama 官网](https://ollama.com/) 下载安装包，安装后 Ollama 自动在后台运行。
+
+升级至 0.5.5 时，旧的默认模型设置会切换到 Hy-MT3。翻译前，请在运行 Ollama 的机器上执行上述模型安装命令。[腾讯模型卡](https://huggingface.co/tencent/Hy-MT3-1.8B-GGUF)
 
 ### 安装插件
 
@@ -123,7 +126,7 @@ curl -sL https://github.com/KimFischer99/Obsidian-LLM-Translator/releases/latest
 |--------|--------|
 | 翻译服务 | Local LLM |
 | 本地模型端口 | `http://localhost:11434` |
-| 模型名称 | `RogerBen/HY-MT2-1.8B:latest` |
+| 模型名称 | `hy-mt3-1.8b-q4:latest` |
 | 源语言 | Auto |
 | 目标语言 | 简体中文 |
 
@@ -205,6 +208,8 @@ llama-server -m /path/to/model.gguf --alias translator-local --host 127.0.0.1 --
 | API Key | 如果服务端没有设置 `--api-key`，在 SecretStorage 中创建值为 `no-key-required` 的条目；否则填写真实密钥。插件要求此项非空。 |
 
 点击 **测试连接**。模型及服务器选项见 [llama.cpp 官方文档](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)。
+
+使用 Hy-MT3-1.8B 的 GGUF 时，启动参数使用 `--alias Hy-MT3-1.8B --jinja -c 8192`，并将模型名称填为 `Hy-MT3-1.8B`。
 
 ### Google 翻译 / Bing 翻译
 

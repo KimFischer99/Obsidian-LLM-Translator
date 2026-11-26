@@ -1,6 +1,11 @@
 import { Modal, Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
-import { getProviderLabel, TranslatorService } from "./translatorService";
-import { DEFAULT_TRANSLATION_PROMPT, migrateTranslationPrompt } from "./translatorService";
+import {
+	DEFAULT_OLLAMA_MODEL,
+	DEFAULT_TRANSLATION_PROMPT,
+	getProviderLabel,
+	migrateTranslationPrompt,
+	TranslatorService,
+} from "./translatorService";
 import { PdfSelectionReader } from "./pdfSelection";
 import { PdfContextMenuService } from "./pdfContextMenu";
 import { PdfOllamaTranslatorSettingTab } from "./settings";
@@ -22,7 +27,7 @@ const DEFAULT_SETTINGS: PdfOllamaTranslatorSettings = {
 	translationScope: "global",
 	translationProvider: "local-llm",
 	ollamaBaseUrl: "http://localhost:11434",
-	model: "RogerBen/HY-MT2-1.8B:latest",
+	model: DEFAULT_OLLAMA_MODEL,
 	cloudApiBaseUrl: "",
 	cloudApiKeySecretId: "",
 	cloudApiModel: "",
@@ -945,16 +950,20 @@ export default class PdfOllamaTranslatorPlugin extends Plugin {
 		}
 		const storedPrompt = typeof safe.customPrompt === "string" ? safe.customPrompt : DEFAULT_SETTINGS.customPrompt;
 		const customPrompt = migrateTranslationPrompt(storedPrompt);
+		const storedModel = typeof safe.model === "string" ? safe.model : DEFAULT_SETTINGS.model;
+		const usesPreviousDefault = ["rogerben/hy-mt2-1.8b:latest", "hy-mt2-1.8b-q4:latest"]
+			.includes(storedModel.trim().toLowerCase());
 		this.settings = {
 			...DEFAULT_SETTINGS,
 			...safe,
+			model: usesPreviousDefault ? DEFAULT_SETTINGS.model : storedModel,
 			cloudApiBaseUrl: safe.cloudApiBaseUrl ?? DEFAULT_SETTINGS.cloudApiBaseUrl,
 			cloudApiKeySecretId,
 			cloudApiModel: safe.cloudApiModel ?? DEFAULT_SETTINGS.cloudApiModel,
 			translationProvider: safe.translationProvider ?? DEFAULT_SETTINGS.translationProvider,
 			customPrompt,
 		};
-		if (Object.prototype.hasOwnProperty.call(loaded, "cloudApiKey") || customPrompt !== storedPrompt) {
+		if (Object.prototype.hasOwnProperty.call(loaded, "cloudApiKey") || customPrompt !== storedPrompt || usesPreviousDefault) {
 			await this.saveSettings();
 		}
 	}
