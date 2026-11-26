@@ -74,15 +74,18 @@
 # 1. Install Ollama (macOS / Linux)
 curl -fsSL https://ollama.com/install.sh | sh
 
-# 2. Pull translation model (recommended HY-MT2-1.8B)
-ollama pull RogerBen/HY-MT2-1.8B:latest
+# 2. Pull Tencent Hy-MT3-1.8B (Q4_K_M) and give it a short name
+ollama pull hf.co/tencent/Hy-MT3-1.8B-GGUF:Q4_K_M
+ollama cp hf.co/tencent/Hy-MT3-1.8B-GGUF:Q4_K_M hy-mt3-1.8b-q4:latest
 
 # 3. After installing the plugin, select Local LLM in settings
-#    Enter endpoint http://localhost:11434 and model name
+#    Enter endpoint http://localhost:11434 and select the downloaded model
 #    Click Test to verify connection
 ```
 
 > 💡 **Windows Users**: Download the installer from the [Ollama website](https://ollama.com/). Ollama will run automatically in the background after installation.
+
+When upgrading to 0.5.5, the previous default model selection moves to Hy-MT3. Run the model setup commands above on the machine running Ollama before translating. [Tencent model card](https://huggingface.co/tencent/Hy-MT3-1.8B-GGUF)
 
 ### Install Plugin
 
@@ -123,7 +126,7 @@ After installing the plugin, configure as follows:
 |---------|-------------------|
 | Translation service | Local LLM |
 | Local model endpoint | `http://localhost:11434` |
-| Model name | `RogerBen/HY-MT2-1.8B:latest` |
+| Model name | `hy-mt3-1.8b-q4:latest` |
 | Source language | Auto |
 | Target language | 简体中文 |
 
@@ -205,6 +208,8 @@ In **Settings → Service**, choose **Cloud API** and enter:
 | API Key | Create a SecretStorage entry containing `no-key-required` if the server has no `--api-key`; otherwise use its real key. The plugin requires a nonempty value. |
 
 Click **Test connection**. See the [llama.cpp server documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md) for model and server options.
+
+For Hy-MT3-1.8B, use `--alias Hy-MT3-1.8B --jinja -c 8192` with its GGUF and enter `Hy-MT3-1.8B` as the model name.
 
 ### Google Translate / Bing Translate
 
